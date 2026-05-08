@@ -19,7 +19,7 @@ First off — thank you for considering a contribution. CyberCat is an open-sour
 
 ## Code of Conduct
 
-This project operates under a simple standard: be professional, be constructive, and be respectful. Contributions that are dismissive, hostile, or discriminatory will not be accepted. Security is a collaborative field — act like it.
+This project operates under a simple standard: be professional, be constructive, and be respectful. Contributions that are dismissive, hostile, or discriminatory will not be accepted. Security is a collaborative field so let's build together in a positive manner.
 
 ---
 
