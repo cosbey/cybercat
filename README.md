@@ -35,7 +35,7 @@ CyberCat is an AI-powered security analyst assistant built for SOC teams and sec
 ## Screenshot
 
 >  ![CyberCat Screenshot](images/cybercat_example.png)
-> 
+>  ![CyberCat Screenshot](images/cybercat_example.png)
 >   
 > 
 
