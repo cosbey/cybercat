@@ -1,33 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ██████████████████████  CYBERCAT CONFIGURATION  ██████████████████████████████
-// ══════════════════════════════════════════════════════════════════════════════
-//
-// Welcome to CyberCat! Before you get started, customize the values below.
-// These settings control how CyberCat identifies itself in generated emails
-// and communications. Replace the placeholder values with your own details.
-//
-// ─────────────────────────────────────────────────────────────────────────────
-
-const CONFIG = {
-  // Your full name — appears in email signatures
-  analystName: "Your Name",
-
-  // Your organization or MSP name — appears in email template bodies
-  orgName: "Your Organization",
-
-  // Your title — appears alongside your name in signatures
-  analystTitle: "Security Analyst",
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Helper — builds the standard email signature used across all templates
-const SIGNATURE = `\n\nRegards,\n${CONFIG.analystName} - ${CONFIG.analystTitle}`;
-// ══════════════════════════════════════════════════════════════════════════════
-
-
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+// ── Claude API ────────────────────────────────────────────────────────────────
+const CLAUDE_MODEL = "claude-sonnet-4-6";
 
 const SYSTEM_PROMPT = `You are Cyber Cat, an elite AI-powered cybersecurity analyst and incident responder. You work alongside security operations center (SOC) analysts to triage alerts, analyze logs, generate incident documentation, and provide threat intelligence.
 
@@ -54,6 +28,103 @@ Important guidance for working with redacted logs:
 - event.original and signal.reason fields are always fully redacted — do not reference their absence in your analysis.`;
 
 
+
+
+// ── Settings System ───────────────────────────────────────────────────────────
+const SETTINGS_DEFAULTS = {
+  analystName:  "John Smith",
+  analystTitle: "Security Analyst",
+  orgName:      "Acme Security Operations",
+};
+
+function loadSettings() {
+  try {
+    const stored = localStorage.getItem("cybercat_settings");
+    return stored ? { ...SETTINGS_DEFAULTS, ...JSON.parse(stored) } : { ...SETTINGS_DEFAULTS };
+  } catch { return { ...SETTINGS_DEFAULTS }; }
+}
+
+function saveSettings(s) {
+  try { localStorage.setItem("cybercat_settings", JSON.stringify(s)); } catch {}
+}
+
+function useSettings() {
+  const [settings, setSettingsState] = useState(loadSettings);
+  const updateSettings = (updates) => {
+    const next = { ...settings, ...updates };
+    setSettingsState(next);
+    saveSettings(next);
+  };
+  const resetSettings = () => {
+    setSettingsState({ ...SETTINGS_DEFAULTS });
+    saveSettings({ ...SETTINGS_DEFAULTS });
+  };
+  return [settings, updateSettings, resetSettings];
+}
+
+// ── Settings Modal ────────────────────────────────────────────────────────────
+function SettingsModal({ settings, onUpdate, onReset, onClose }) {
+  const [local, setLocal] = useState({ ...settings });
+  const changed = JSON.stringify(local) !== JSON.stringify(settings);
+
+  const save = () => { onUpdate(local); onClose(); };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"var(--ap-white)",borderRadius:"12px",width:"100%",maxWidth:"460px",boxShadow:"0 8px 32px rgba(26,43,60,0.22)",overflow:"hidden"}}>
+        {/* Header */}
+        <div style={{background:"linear-gradient(135deg,var(--ap-navy) 0%,#243c4f 100%)",borderBottom:"3px solid var(--ap-blue)",padding:"1rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,color:"var(--ap-white)",fontSize:"0.9rem",letterSpacing:"0.04em"}}>
+              &#9881;&#65039; Settings
+            </div>
+            <div style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.5)",letterSpacing:"0.08em",textTransform:"uppercase",marginTop:"2px"}}>
+              Analyst Identity &amp; Preferences
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",fontSize:"1.2rem",cursor:"pointer",lineHeight:1}}>&#10005;</button>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:"1.25rem",display:"flex",flexDirection:"column",gap:"1rem"}}>
+          <div style={{fontSize:"0.72rem",fontWeight:700,color:"var(--ap-text-light)",textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid var(--ap-border)",paddingBottom:"0.4rem"}}>
+            Analyst Identity
+          </div>
+          <div style={{fontSize:"0.75rem",color:"var(--ap-text-mid)"}}>
+            These values are used in email sign-offs, communications templates, and Claude prompts.
+          </div>
+
+          {[
+            { label: "Full Name",     key: "analystName",  placeholder: "John Smith" },
+            { label: "Title",         key: "analystTitle", placeholder: "Security Analyst" },
+            { label: "Organization",  key: "orgName",      placeholder: "Acme Security Operations" },
+          ].map(({ label, key, placeholder }) => (
+            <div key={key} style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+              <label style={{fontSize:"0.72rem",fontWeight:600,color:"var(--ap-text-mid)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</label>
+              <input
+                style={{background:"var(--ap-offwhite)",border:"1px solid var(--ap-border)",borderRadius:"6px",padding:"0.55rem 0.75rem",fontSize:"0.82rem",color:"var(--ap-text)",fontFamily:"'Montserrat',sans-serif",outline:"none"}}
+                value={local[key]}
+                placeholder={placeholder}
+                onChange={e => setLocal(p => ({ ...p, [key]: e.target.value }))}
+              />
+            </div>
+          ))}
+
+          <div style={{display:"flex",gap:"0.5rem",marginTop:"0.25rem"}}>
+            <button onClick={save} disabled={!changed}
+              style={{flex:1,background:"var(--ap-blue)",color:"var(--ap-white)",border:"none",borderRadius:"6px",padding:"0.65rem",fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",opacity:changed?1:0.5,letterSpacing:"0.04em"}}>
+              Save Settings
+            </button>
+            <button onClick={() => { onReset(); onClose(); }}
+              style={{background:"none",border:"1px solid var(--ap-border)",borderRadius:"6px",padding:"0.65rem 1rem",fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",color:"var(--ap-text-mid)"}}>
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Threat Hunt Sanitizer ─────────────────────────────────────────────────────
 // Allowlist of field paths whose VALUES are safe to send to Claude for hunt generation.
@@ -253,6 +324,29 @@ const TOKEN_TYPE_LABELS = {
   "DEVICE_ID":        "a device identifier",
   "BREACH_ID":        "a Darktrace breach identifier",
   "RULE_ID":          "a rule identifier",
+  "AWS_ACCOUNT_ID":   "an AWS account identifier",
+  "PRODUCT_ARN":      "an AWS product ARN",
+  "FINDING_ID":       "an AWS Security Hub finding identifier",
+  "GENERATOR_ID":     "a finding generator identifier",
+  "RESOURCE_ID":      "an AWS resource identifier",
+  "RESOURCE_NAME":    "an AWS resource name",
+  "OWNER_ID":         "a resource owner identifier",
+  "S1_ACCOUNT_ID":    "a SentinelOne account identifier",
+  "S1_SITE_ID":       "a SentinelOne site identifier",
+  "S1_SITE":          "a SentinelOne site name",
+  "S1_GROUP_ID":      "a SentinelOne group identifier",
+  "S1_GROUP":         "a SentinelOne group name",
+  "S1_MGMT_ID":       "a SentinelOne management identifier",
+  "S1_SCOPE_ID":      "a SentinelOne scope identifier",
+  "CORRELATION_ID":        "a correlation identifier",
+  "SERVICE_PRINCIPAL_ID":  "an Azure service principal identifier",
+  "SERVICE_PRINCIPAL_NAME":"an Azure service principal name",
+  "CREDENTIAL_ID":         "a credential identifier",
+  "TOKEN_ISSUER":          "a token issuer name",
+  "APP_ID":                "an application identifier",
+  "CERT_ISSUER":      "a certificate issuer",
+  "CERT_SUBJECT":     "a certificate subject",
+  "CERT_SERIAL":      "a certificate serial number",
   "SERVER_ADDR":      "a server address",
   "SERVER_DOMAIN":    "a server domain",
   "CLIENT_ADDR":      "a client address",
@@ -289,19 +383,19 @@ function buildRedactedPrompt(logContent, instruction, tokenMap) {
 }
 
 async function callClaude(messages, onChunk, signal) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  // In local dev (localhost) route through proxy; in artifact route directly
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const endpoint = isLocal ? "/api/claude" : "https://api.anthropic.com/v1/messages";
+  const baseHeaders = { "Content-Type": "application/json" };
+  const body = { model: "claude-sonnet-4-6", max_tokens: 2500, messages, stream: true };
+  if (!isLocal) body.system = SYSTEM_PROMPT;
+  const res = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: baseHeaders,
     signal,
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1500,
-      system: SYSTEM_PROMPT,
-      messages,
-      stream: true,
-    }),
+    body: JSON.stringify(isLocal ? { ...body, system: SYSTEM_PROMPT } : body),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `HTTP ${res.status}`);
@@ -333,10 +427,26 @@ async function callClaude(messages, onChunk, signal) {
 
 
 
-// ── PII Redaction Engine ──────────────────────────────────────────────────────
-// Covers Windows Event Logs, O365, Microsoft Defender, Okta, Cisco Duo,
-// Fortigate, Darktrace, Proofpoint TAP, Cybereason, and ArmorPoint SIEM schemas.
-// To customize: add your own field paths and token types to REDACT_FIELDS below.
+// ── Token map display helper ─────────────────────────────────────────────────
+function truncateTokenValue(val) {
+  if (!val) return val;
+  // Fully redacted field content — show clean placeholder
+  if (val.trim().startsWith("{") || val.trim().startsWith("[{")) return "{...JSON redacted...}";
+  // ARNs — trim to service level
+  if (val.startsWith("arn:aws:")) {
+    const parts = val.split(":");
+    return parts.slice(0, 5).join(":") + ":...";
+  }
+  // Full UUIDs/GUIDs — show first segment only
+  if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(val)) {
+    return val.substring(0, 8) + "-…";
+  }
+  // General — 80 chars max with ellipsis
+  if (val.length > 80) return val.substring(0, 77) + "…";
+  return val;
+}
+
+// ── PII Redaction Engine (Windows / ArmorPoint Schema) ───────────────────────
 
 const REDACT_FIELDS = {
   "user.name":                           "USER",
@@ -371,8 +481,7 @@ const REDACT_FIELDS = {
   "winlog.event_data.TargetDomainName":  "DOMAIN",
   "winlog.event_data.TargetSid":         "SID",
   "winlog.event_data.AllowedToDelegateTo": "DELEGATE_TARGET",
-  // TaskName may contain user/org context — fully redact
-  "winlog.event_data.TaskName":          "TASK",
+  // winlog.event_data.TaskName preserved — task name is behavioral context, not PII
   // event.message is freeform — pattern sweep handles inline PII automatically
   // ── O365 Login schema ──────────────────────────────────────────────────────
   "user.email":                               "EMAIL",
@@ -581,6 +690,153 @@ const REDACT_FIELDS = {
   // rule.name/description/category/author/version preserved — rule context
   // event.risk_score/risk_score_norm/severity preserved — critical scoring
   // Pattern sweep handles any IPs or hostnames embedded in filter trigger values
+  // ── AWS Security Hub / GuardDuty schema ─────────────────────────────────────
+  // AWS account & identity
+  "aws.securityhub_findings.aws_account_id":                                          "AWS_ACCOUNT_ID",
+  "aws.securityhub_findings.company.name":                                            "ORG",
+  "aws.securityhub_findings.generator.id":                                            "GENERATOR_ID",
+  "aws.securityhub_findings.product.arn":                                             "PRODUCT_ARN",
+  "aws.securityhub_findings.product.fields.aws/securityhub/FindingId":               "FINDING_ID",
+  "aws.securityhub_findings.product.fields.aws/guardduty/service/detectorId":        "DETECTOR_ID",
+  // IAM resource identity — wildcard array path
+  "aws.securityhub_findings.resources[].Details.AwsIamAccessKey.PrincipalId":        "USER_ID",
+  "aws.securityhub_findings.resources[].Details.AwsIamAccessKey.PrincipalName":      "USER",
+  "aws.securityhub_findings.resources[].Id":                                          "RESOURCE_ID",
+  "aws.securityhub_findings.resources[].Owner.Id":                                    "OWNER_ID",
+  // Top-level resource fields
+  "resource.id":                                                                       "RESOURCE_ID",
+  "resource.name":                                                                     "RESOURCE_NAME",
+  // aws.securityhub_findings.action.* preserved — API call, remote IP, geo, org (threat intel)
+  // aws.securityhub_findings.severity.*/provider_fields.severity.* preserved — critical
+  // aws.securityhub_findings.title/description preserved — alert context
+  // aws.securityhub_findings.types[]/workflow.*/record_state preserved — status/classification
+  // aws.securityhub_findings.region/cloud.region/cloud.provider preserved — infra context
+  // aws.securityhub_findings.resources[].Type/Partition/Region/CloudProvider preserved
+  // aws.securityhub_findings.resources[].Details.AwsIamAccessKey.PrincipalType preserved
+  // all guardduty remoteIpDetails fields preserved — threat intel
+  // rule.*/resource.type/result.evaluation/url.* preserved — analytical
+  // ── AWS Security Hub / GuardDuty (behavioral profiling variant) ─────────────
+  "aws.securityhub_findings.resources[].Owner.Account.Id":                           "OWNER_ID",
+  "aws.securityhub_findings.product.fields.aws/guardduty/service/additionalInfo/profiledBehavior/frequentProfiledUserNamesAccountProfiling": "USER",
+  // All other additionalInfo.profiledBehavior/unusualBehavior/userAgent fields preserved
+  // — behavioral baselines, ASNs, API names, user agent strings (no direct PII)
+  // ── SentinelOne OCSF schema ─────────────────────────────────────────────────
+  // Device identity
+  "device.owner.name":                                       "USER",
+  "device.uid":                                              "DEVICE_ID",
+  "device.agent.uid":                                        "AGENT_ID",
+  "device.agent.uuid":                                       "AGENT_ID",
+  // Evidence actor user
+  "evidences[].actor.user.name":                             "USER",
+  "evidences[].actor.user.uid":                              "USER_ID",
+  "evidences[].actor.user.uid_alt":                          "USER_ID",
+  "evidences[].actor.user.account.name":                     "ORG",
+  // Evidence process user
+  "evidences[].process.user.name":                           "USER",
+  "evidences[].process.user.uid":                            "USER_ID",
+  "evidences[].process.user.uid_alt":                        "USER_ID",
+  "evidences[].process.user.display_name":                   "USER",
+  "evidences[].process.user.domain":                         "DOMAIN",
+  "evidences[].process.user.account.name":                   "ORG",
+  // Evidence file owner
+  "evidences[].process.file.owner.name":                     "USER",
+  "evidences[].process.file.owner.uid":                      "USER_ID",
+  "evidences[].process.file.owner.uid_alt":                  "USER_ID",
+  "evidences[].process.file.owner.account.name":             "ORG",
+  // Certificate identifiers
+  "evidences[].process.file.signature.certificate.issuer":   "CERT_ISSUER",
+  "evidences[].process.file.signature.certificate.subject":  "CERT_SUBJECT",
+  "evidences[].process.file.signature.certificate.serial_number": "CERT_SERIAL",
+  // Evidence user
+  "evidences[].user.name":                                   "USER",
+  "evidences[].user.uid":                                    "USER_ID",
+  "evidences[].user.uid_alt":                                "USER_ID",
+  "evidences[].user.account.name":                           "ORG",
+  // Evidence resource owner
+  "evidences[].resources[].owner.name":                      "USER",
+  "evidences[].resources[].owner.uid":                       "USER_ID",
+  "evidences[].resources[].owner.uid_alt":                   "USER_ID",
+  "evidences[].resources[].owner.account.name":              "ORG",
+  // Top-level resource owner
+  "resources[].owner.name":                                  "USER",
+  "resources[].owner.uid":                                   "USER_ID",
+  "resources[].owner.uid_alt":                               "USER_ID",
+  "resources[].owner.account.name":                          "ORG",
+  "resources[].internal_uid":                                "RESOURCE_ID",
+  // SentinelOne metadata — account, site, group identifiers
+  "resources[].s1_metadata.account_id":                      "S1_ACCOUNT_ID",
+  "resources[].s1_metadata.account_name":                    "ORG",
+  "resources[].s1_metadata.site_id":                         "S1_SITE_ID",
+  "resources[].s1_metadata.site_name":                       "S1_SITE",
+  "resources[].s1_metadata.group_id":                        "S1_GROUP_ID",
+  "resources[].s1_metadata.group_name":                      "S1_GROUP",
+  "resources[].s1_metadata.mgmt_id":                         "S1_MGMT_ID",
+  "resources[].s1_metadata.scope_id":                        "S1_SCOPE_ID",
+  "s1_detection_metadata.account_id":                        "S1_ACCOUNT_ID",
+  "s1_detection_metadata.account_name":                      "ORG",
+  "s1_detection_metadata.site_id":                           "S1_SITE_ID",
+  "s1_detection_metadata.site_name":                         "S1_SITE",
+  "s1_detection_metadata.group_id":                          "S1_GROUP_ID",
+  "s1_detection_metadata.group_name":                        "S1_GROUP",
+  "s1_detection_metadata.mgmt_id":                           "S1_MGMT_ID",
+  "s1_detection_metadata.scope_id":                          "S1_SCOPE_ID",
+  // Finding identifiers
+  "finding_info.uid":                                        "FINDING_ID",
+  "finding_info.uid_alt":                                    "FINDING_ID",
+  "finding_info.internal_uid":                               "FINDING_ID",
+  "metadata.correlation_uid":                                "CORRELATION_ID",
+  // finding_info.related_events[].attacks[].tactic/technique preserved — MITRE ATT&CK
+  // evidences[].process.cmd_line/file.hashes/name/path preserved — threat intel
+  // evidences[].process.file.signature.state_id/algorithm preserved — analytical
+  // observables[].value preserved — IOC values (IPs, hashes, domains)
+  // device.os.*/analytic.*/metadata.product.* preserved — context
+  // severity_id/confidence_id/verdict_id/status_id preserved — scoring
+  // ── Azure AD Sign-in Logs (Event Hub) schema ────────────────────────────────
+  // Azure identifiers
+  "azure.correlation_id":                                              "CORRELATION_ID",
+  "azure.resource.id":                                                 "RESOURCE_ID",
+  "azure.tenant_id":                                                   "TENANT_ID",
+  "azure.signinlogs.caller_ip_address":                                "IP",
+  "azure.signinlogs.identity":                                         "USER",
+  // Sign-in properties — identity
+  "azure.signinlogs.properties.alternate_sign_in_name":               "USER",
+  "azure.signinlogs.properties.app_id":                                "APP_ID",
+  "azure.signinlogs.properties.app_owner_tenant_id":                   "TENANT_ID",
+  "azure.signinlogs.properties.app_service_principal_id":              "SERVICE_PRINCIPAL_ID",
+  "azure.signinlogs.properties.correlation_id":                        "CORRELATION_ID",
+  "azure.signinlogs.properties.device_detail.device_id":               "DEVICE_ID",
+  "azure.signinlogs.properties.federated_credential_id":               "CREDENTIAL_ID",
+  "azure.signinlogs.properties.global_secure_access_ip_address":       "IP",
+  "azure.signinlogs.properties.home_tenant_id":                        "TENANT_ID",
+  "azure.signinlogs.properties.home_tenant_name":                      "ORG",
+  "azure.signinlogs.properties.id":                                    "EVENT_ID",
+  "azure.signinlogs.properties.ip_address_from_resource_provider":     "IP",
+  "azure.signinlogs.properties.original_request_id":                   "REQUEST_ID",
+  "azure.signinlogs.properties.resource_id":                           "RESOURCE_ID",
+  "azure.signinlogs.properties.resource_owner_tenant_id":              "TENANT_ID",
+  "azure.signinlogs.properties.resource_service_principal_id":         "SERVICE_PRINCIPAL_ID",
+  "azure.signinlogs.properties.resource_tenant_id":                    "TENANT_ID",
+  "azure.signinlogs.properties.service_principal_credential_key_id":   "CREDENTIAL_ID",
+  "azure.signinlogs.properties.service_principal_credential_thumbprint": "CERT_SERIAL",
+  "azure.signinlogs.properties.service_principal_id":                  "SERVICE_PRINCIPAL_ID",
+  "azure.signinlogs.properties.service_principal_name":                "SERVICE_PRINCIPAL_NAME",
+  "azure.signinlogs.properties.session_id":                            "SESSION_ID",
+  "azure.signinlogs.properties.sign_in_identifier":                    "USER",
+  "azure.signinlogs.properties.source_app_client_id":                  "APP_ID",
+  "azure.signinlogs.properties.tenant_id":                             "TENANT_ID",
+  "azure.signinlogs.properties.token_issuer_name":                     "TOKEN_ISSUER",
+  "azure.signinlogs.properties.unique_token_identifier":               "TOKEN_ID",
+  "azure.signinlogs.properties.user_display_name":                     "USER",
+  "azure.signinlogs.properties.user_id":                               "USER_ID",
+  "azure.signinlogs.properties.user_principal_name":                   "USER",
+  // Related entities
+  "related.entity":                                                    "USER",
+  "source.address":                                                    "IP",
+  // Preserved: app_display_name, auth_protocol/requirement, ASN, client_app_used,
+  // conditional_access_status, cross_tenant_access_type, device_detail.browser/OS/
+  // is_compliant/is_managed, risk_*, network_location_details[].network_type,
+  // sign_in_event_types, token_issuer_type, resource_display_name, status.error_code,
+  // azure.resource.provider, azure-eventhub.*, geo.*, source.geo.*, threat intel fields
   // ── O365 Unusual Login (_source wrapper variant) schema ────────────────────
   // Common fields re-mapped under _source wrapper
   "_source.user.name":                           "USER",
@@ -728,6 +984,7 @@ function redactStringPatterns(text, registry) {
     "desktop","downloads","documents","pictures","music","videos",
     "assembly","gac","gac_32","gac_64","gac_msil","dotnet","framework","framework64",
     "packages","node_modules","bin","obj","debug","release","public","default","allusers",
+    "users","programfiles","programfiles(x86)","programdata",
   ]);
   out = out.replace(/\b([A-Za-z0-9_.-]+)\\([A-Za-z0-9._-]+)\b/g, function(m, domain, user) {
     // Skip if either segment is a known Windows system path component
@@ -762,18 +1019,76 @@ function redactStringPatterns(text, registry) {
 
 function redactLog(rawInput) {
   const registry = createTokenRegistry();
-  let redacted;
-  try {
-    const parsed = JSON.parse(rawInput);
+
+  // Helper to redact a single parsed JSON object
+  function redactSingleJSON(parsed) {
     const cleaned = redactObject(parsed, registry);
-    redacted = JSON.stringify(cleaned, function(key, val) {
+    return JSON.stringify(cleaned, function(key, val) {
       if (typeof val === "string") return redactStringPatterns(val, registry);
       return val;
     }, 2);
-  } catch (e) {
-    redacted = redactStringPatterns(rawInput, registry);
   }
-  return { redacted: redacted, tokenMap: registry.getMap() };
+
+  // Try single valid JSON first (most common case — no change in behavior)
+  try {
+    const parsed = JSON.parse(rawInput);
+    // JSON array of logs e.g. [{...},{...}]
+    if (Array.isArray(parsed)) {
+      const redactedLogs = parsed.map(item =>
+        typeof item === "object" && item !== null
+          ? redactSingleJSON(item)
+          : redactStringPatterns(String(item), registry)
+      );
+      return { redacted: redactedLogs.join("\n\n"), tokenMap: registry.getMap(), logCount: parsed.length };
+    }
+    // Single JSON object
+    return { redacted: redactSingleJSON(parsed), tokenMap: registry.getMap(), logCount: 1 };
+  } catch (_) {}
+
+  // Not valid JSON — try to split into multiple JSON objects
+  // Match top-level {...} blocks (handles newline-separated or blank-line-separated logs)
+  const jsonBlocks = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < rawInput.length; i++) {
+    const c = rawInput[i];
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === "\"" && !esc) { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === "{") { if (depth === 0) start = i; depth++; }
+    else if (c === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        jsonBlocks.push(rawInput.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  if (jsonBlocks.length > 1) {
+    // Multiple JSON objects found — redact each with the shared registry
+    const redactedBlocks = jsonBlocks.map(block => {
+      try {
+        const parsed = JSON.parse(block);
+        return redactSingleJSON(parsed);
+      } catch {
+        return redactStringPatterns(block, registry);
+      }
+    });
+    // Also redact any plain text between/around the JSON blocks
+    return { redacted: redactedBlocks.join("\n\n"), tokenMap: registry.getMap(), logCount: jsonBlocks.length };
+  }
+
+  if (jsonBlocks.length === 1) {
+    // Single JSON block extracted from surrounding text
+    try {
+      const parsed = JSON.parse(jsonBlocks[0]);
+      return { redacted: redactSingleJSON(parsed), tokenMap: registry.getMap(), logCount: 1 };
+    } catch {}
+  }
+
+  // Pure plain text — pattern sweep only
+  return { redacted: redactStringPatterns(rawInput, registry), tokenMap: registry.getMap(), logCount: 0 };
 }
 
 
@@ -833,6 +1148,12 @@ function detectLogType(parsed) {
   if (parsed.fortinet) return "fortigate";
   // PowerShell Windows event
   if (parsed.powershell) return "windows_powershell";
+  // Azure AD Sign-in Logs
+  if (parsed.azure && parsed.azure.signinlogs) return "azure_signin";
+  // SentinelOne OCSF
+  if (parsed.s1_detection_metadata || parsed.finding_info) return "sentinelone";
+  // AWS Security Hub / GuardDuty
+  if (parsed.aws && parsed.aws.securityhub_findings) return "aws_securityhub";
   // Darktrace — has darktrace field
   if (parsed.darktrace) return "darktrace";
   // Proofpoint TAP — has proofpoint_tap field
@@ -866,7 +1187,7 @@ const SMART_TEMPLATES = {
     body: (f) =>
 `Hello,
 
-${CONFIG.orgName} has observed an O365 Unusual Login for the following user.
+${getSettings().orgName} has observed an O365 Unusual Login for the following user.
 
 User: ${f.user || "[user not found]"}
 Source IP: ${f.sourceIp || "[IP not found]"}
@@ -877,7 +1198,7 @@ Distance from typical location: ${f.miles || "[distance not found]"} miles
 We observed the following user logging in from a location that was not typical and had not previously appeared in the user's history. We wanted to reach out to confirm if this activity was expected. If you have any questions or concerns, please feel free to ask. We are here to help.
 
 Regards,
-${CONFIG.analystName} - ${CONFIG.analystTitle}`,
+${analystName} - ${analystTitle}`,
   },
 
   fortigate: {
@@ -897,7 +1218,7 @@ ${CONFIG.analystName} - ${CONFIG.analystTitle}`,
     body: (f) =>
 `Hello,
 
-${CONFIG.orgName} has observed the following Fortigate Firewall Threat Activity.
+${getSettings().orgName} has observed the following Fortigate Firewall Threat Activity.
 
 Customer: ${f.customer || "[customer not found]"}
 Alert: ${f.attack || "[alert not found]"}
@@ -909,10 +1230,10 @@ Destination Port: ${f.destPort || "[port not found]"}
 Protocol: ${f.protocol || "[protocol not found]"}
 Time: ${f.time ? formatTimestamp(f.time) : "[time not found]"}
 
-${CONFIG.orgName} has detected suspicious network activity originating from an external source targeting your environment. The activity has been flagged by the firewall's intrusion detection system. If this is not an expected activity, we would recommend adding this IP to your block list if it is not related to your business operations. If you have any questions or concerns, please let us know. We are more than happy to assist.
+${getSettings().orgName} has detected suspicious network activity originating from an external source targeting your environment. The activity has been flagged by the firewall's intrusion detection system. If this is not an expected activity, we would recommend adding this IP to your block list if it is not related to your business operations. If you have any questions or concerns, please let us know. We are more than happy to assist.
 
 Regards,
-${CONFIG.analystName} - ${CONFIG.analystTitle}`,
+${analystName} - ${analystTitle}`,
   },
 
   windows_scheduled_task: {
@@ -932,7 +1253,7 @@ ${CONFIG.analystName} - ${CONFIG.analystTitle}`,
     body: (f) =>
 `Hello,
 
-${CONFIG.orgName} has observed the following Suspicious Scheduled Task Activity.
+${getSettings().orgName} has observed the following Suspicious Scheduled Task Activity.
 
 Customer: ${f.customer || "[customer not found]"}
 Alert: ${f.reason || "[alert not found]"}
@@ -943,10 +1264,10 @@ Subject User: ${f.subject || "[user not found]"}
 Event ID: ${f.eventId || "[event ID not found]"}
 Time: ${f.time ? formatTimestamp(f.time) : "[time not found]"}
 
-${CONFIG.orgName} has detected a scheduled task event on the above-mentioned host that has triggered a security alert. Scheduled tasks are commonly used by threat actors to establish persistence on an endpoint. We wanted to bring this to your attention and confirm whether this task was expected or authorized. If you have any questions or concerns, please let us know. We are more than happy to assist.
+${getSettings().orgName} has detected a scheduled task event on the above-mentioned host that has triggered a security alert. Scheduled tasks are commonly used by threat actors to establish persistence on an endpoint. We wanted to bring this to your attention and confirm whether this task was expected or authorized. If you have any questions or concerns, please let us know. We are more than happy to assist.
 
 Regards,
-${CONFIG.analystName} - ${CONFIG.analystTitle}`,
+${analystName} - ${analystTitle}`,
   },
 
   windows_event: {
@@ -967,7 +1288,7 @@ ${CONFIG.analystName} - ${CONFIG.analystTitle}`,
     body: (f) =>
 `Hello,
 
-${CONFIG.orgName} has observed the following Suspicious Process Execution Activity.
+${getSettings().orgName} has observed the following Suspicious Process Execution Activity.
 
 Customer: ${f.customer || "[customer not found]"}
 Alert: ${f.reason || "[alert not found]"}
@@ -979,10 +1300,10 @@ Executable: ${f.executable || "[executable not found]"}
 Event ID: ${f.eventId || "[event ID not found]"}
 Time: ${f.time ? formatTimestamp(f.time) : "[time not found]"}
 
-${CONFIG.orgName} has detected a process execution event on the above-mentioned host that has triggered a security alert. This activity may indicate unauthorized or suspicious behavior on the endpoint. We wanted to bring this to your attention and confirm whether this activity was expected. If you have any questions or concerns, please let us know. We are more than happy to assist.
+${getSettings().orgName} has detected a process execution event on the above-mentioned host that has triggered a security alert. This activity may indicate unauthorized or suspicious behavior on the endpoint. We wanted to bring this to your attention and confirm whether this activity was expected. If you have any questions or concerns, please let us know. We are more than happy to assist.
 
 Regards,
-${CONFIG.analystName} - ${CONFIG.analystTitle}`,
+${analystName} - ${analystTitle}`,
   },
 };
 
@@ -1032,21 +1353,168 @@ function buildSmartEmail(rawLog) {
   };
 }
 
+
+// ── Custom Redaction Engine ───────────────────────────────────────────────────
+function applyCustomRedactions(text, customRules) {
+  if (!customRules || customRules.length === 0) return text;
+  let out = text;
+  customRules.forEach(rule => {
+    if (!rule.value || !rule.value.trim()) return;
+    const escaped = rule.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(escaped, "g"), rule.token);
+  });
+  return out;
+}
+
+function CustomRedactionPanel({ text, onRedact }) {
+  const [fieldInput, setFieldInput] = React.useState("");
+  const [rules, setRules] = React.useState([]);
+  const [counter, setCounter] = React.useState(1);
+  const [showPanel, setShowPanel] = React.useState(false);
+  const [matchCount, setMatchCount] = React.useState(null);
+
+  const handleAdd = () => {
+    const val = fieldInput.trim();
+    if (!val || !text) return;
+    const escaped = val.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matches = (text.match(new RegExp(escaped, "g")) || []).length;
+    if (matches === 0) { setMatchCount(0); return; }
+    const token = "[CUSTOM_" + String(counter).padStart(3, "0") + "]";
+    const newRules = [...rules, { id: Date.now(), value: val, token, matches }];
+    setRules(newRules);
+    setCounter(c => c + 1);
+    setFieldInput("");
+    setMatchCount(null);
+    if (onRedact) onRedact(newRules);
+  };
+
+  const handleRemove = (id) => {
+    const newRules = rules.filter(r => r.id !== id);
+    setRules(newRules);
+    if (onRedact) onRedact(newRules);
+  };
+
+  const handleInputChange = (val) => {
+    setFieldInput(val);
+    setMatchCount(null);
+    if (!val.trim() || !text) return;
+    const escaped = val.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    setMatchCount((text.match(new RegExp(escaped, "g")) || []).length);
+  };
+
+  return (
+    <div style={{borderTop:"1px solid var(--ap-border)",marginTop:"0.25rem",paddingTop:"0.5rem"}}>
+      <button onClick={() => setShowPanel(v => !v)}
+        style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.72rem",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:"0.3rem"}}>
+        {showPanel ? "▲" : "▼"} {rules.length > 0 ? "Custom redactions (" + rules.length + " active)" : "Add custom redaction"}
+      </button>
+      {showPanel && (
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginTop:"0.5rem"}}>
+          <div style={{fontSize:"0.72rem",color:"var(--ap-text-mid)"}}>
+            Type a specific value visible in the preview to redact all occurrences. Use ✕ to remove a rule.
+          </div>
+          <div style={{display:"flex",gap:"0.4rem",alignItems:"center"}}>
+            <input
+              style={{flex:1,background:"var(--ap-white)",border:"1px solid "+(matchCount===0?"var(--ap-danger)":"var(--ap-border)"),
+                borderRadius:"5px",padding:"0.45rem 0.75rem",fontSize:"0.78rem",
+                fontFamily:"'Source Code Pro',monospace",color:"var(--ap-text)",outline:"none"}}
+              placeholder="Value to redact (e.g. acme-corp-9876, tenant-id-abc)..."
+              value={fieldInput}
+              onChange={e => handleInputChange(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
+            />
+            {fieldInput.trim() && matchCount !== null && (
+              <span style={{fontSize:"0.7rem",fontWeight:600,whiteSpace:"nowrap",
+                color:matchCount===0?"var(--ap-danger)":"var(--ap-success)"}}>
+                {matchCount===0 ? "No matches" : matchCount+" match"+(matchCount!==1?"es":"")}
+              </span>
+            )}
+            <button onClick={handleAdd} disabled={!fieldInput.trim()||matchCount===0}
+              style={{background:"var(--ap-blue)",color:"var(--ap-white)",border:"none",borderRadius:"5px",
+                padding:"0.45rem 0.875rem",fontSize:"0.75rem",fontWeight:600,cursor:"pointer",
+                fontFamily:"'Montserrat',sans-serif",opacity:(!fieldInput.trim()||matchCount===0)?0.4:1}}>
+              Redact
+            </button>
+          </div>
+          {rules.length > 0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+              {rules.map(rule => (
+                <div key={rule.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",
+                  background:"var(--ap-white)",border:"1px solid var(--ap-border)",
+                  borderRadius:"5px",padding:"0.35rem 0.6rem",fontSize:"0.72rem"}}>
+                  <span style={{fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{rule.token}</span>
+                  <span style={{color:"var(--ap-text-mid)"}}>←</span>
+                  <span style={{fontFamily:"monospace",color:"var(--ap-text)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rule.value}</span>
+                  <span style={{color:"var(--ap-text-light)",fontSize:"0.68rem"}}>{rule.matches} replaced</span>
+                  <button onClick={() => handleRemove(rule.id)}
+                    style={{background:"none",border:"none",color:"var(--ap-text-light)",cursor:"pointer",fontSize:"0.75rem",padding:"0 2px",lineHeight:1}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Markdown renderer (no external dep) ──────────────────────────────────────
 function MD({ children }) {
   if (!children) return null;
-  const html = children
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/^[-*] (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/^(?!<[hup]|<\/)(.*\S.*)$/gm, "<p>$1</p>");
-  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+  let text = children;
+  const codeBlocks = [];
+  text = text.replace(/```(?:[a-zA-Z]*)\n([\s\S]*?)```/g, function(m, code) {
+    const idx = codeBlocks.length;
+    codeBlocks.push(code.trimEnd());
+    return "\u0000CODE" + idx + "\u0000";
+  });
+  text = text.replace(/^`{1,3}\s*$/gm, "");
+  text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  text = text.replace(/`([^`\n]{1,200})`/g, "<code>$1</code>");
+  text = text.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  text = text.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  text = text.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+  const lines = text.split("\n");
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) { out.push(""); i++; continue; }
+    if (/^<[huo]|^\u0000CODE/.test(trimmed)) { out.push(line); i++; continue; }
+    if (/^[-*] /.test(trimmed)) {
+      const items = [];
+      while (i < lines.length && /^[-*] /.test(lines[i].trim())) {
+        items.push("<li>" + lines[i].trim().replace(/^[-*] /, "") + "</li>");
+        i++;
+      }
+      out.push("<ul>" + items.join("") + "</ul>");
+      continue;
+    }
+    if (/^\d+\. /.test(trimmed)) {
+      const items = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i].trim())) {
+        items.push("<li>" + lines[i].trim().replace(/^\d+\. /, "") + "</li>");
+        i++;
+      }
+      out.push("<ol>" + items.join("") + "</ol>");
+      continue;
+    }
+    out.push(trimmed);
+    i++;
+  }
+  let result = out.join("\n").split("\n\n").map(function(block) {
+    const b = block.trim();
+    if (!b) return "";
+    if (/^<[huo]|^\u0000CODE/.test(b)) return b;
+    return "<p>" + b.replace(/\n/g, "<br/>") + "</p>";
+  }).join("\n");
+  codeBlocks.forEach(function(code, idx) {
+    const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    result = result.replace("\u0000CODE" + idx + "\u0000", "<pre><code>" + escaped + "</code></pre>");
+  });
+  return <div className="md" dangerouslySetInnerHTML={{ __html: result }} />;
 }
 
 // ── Copy helper ───────────────────────────────────────────────────────────────
@@ -1102,7 +1570,77 @@ function Spinner() {
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
-function LogAnalysis({ copy }) {
+
+// ── Threat Intel Enrichment Helpers ──────────────────────────────────────────
+const PRIVATE_IP_RE = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.|169\.254\.|::1$|fc|fd)/;
+
+function extractExternalIPs(text) {
+  const matches = text.match(/\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g) || [];
+  return [...new Set(matches.filter(ip => !PRIVATE_IP_RE.test(ip)))].slice(0, 5);
+}
+
+function extractHashes(text) {
+  const sha256 = [...new Set(text.match(/\b[a-fA-F0-9]{64}\b/g) || [])];
+  const md5    = [...new Set(text.match(/\b[a-fA-F0-9]{32}\b/g) || [])];
+  const sha1   = [...new Set(text.match(/\b[a-fA-F0-9]{40}\b/g) || [])];
+  // Prefer SHA256, fallback to SHA1, then MD5 — limit to 3 total
+  return [...sha256, ...sha1, ...md5].slice(0, 3);
+}
+
+async function enrichIP(ip) {
+  try {
+    const res = await fetch("/api/abuseipdb?ip=" + encodeURIComponent(ip) + "&maxAgeInDays=90");
+    if (!res.ok) return null;
+    const data = await res.json();
+    const s = data.summary || {};
+    return { ip, score: s.abuse_confidence, reports: s.total_reports, isp: s.isp, country: s.country, is_tor: s.is_tor };
+  } catch { return null; }
+}
+
+async function enrichHash(hash) {
+  try {
+    const res = await fetch("/api/virustotal?type=hash&value=" + encodeURIComponent(hash));
+    if (!res.ok) return null;
+    const data = await res.json();
+    const s = data.summary || {};
+    return { hash, malicious: s.malicious, total: s.total, tags: s.tags || [], detections: (s.detections || []).slice(0, 3) };
+  } catch { return null; }
+}
+
+function buildEnrichmentContext(ipResults, hashResults) {
+  if (!ipResults.length && !hashResults.length) return "";
+  let ctx = "\n\n--- THREAT INTELLIGENCE ENRICHMENT ---\n";
+  ctx += "(Automatically gathered before analysis — use this to inform your findings)\n\n";
+
+  if (ipResults.length > 0) {
+    ctx += "IP Reputation (AbuseIPDB):\n";
+    ipResults.forEach(r => {
+      if (!r) return;
+      const risk = r.score > 50 ? "HIGH RISK" : r.score > 10 ? "SUSPICIOUS" : "CLEAN";
+      ctx += "  " + r.ip + " — " + risk + " (" + r.score + "% abuse confidence, " + r.reports + " reports)";
+      if (r.isp) ctx += " | ISP: " + r.isp;
+      if (r.country) ctx += " | Country: " + r.country;
+      if (r.is_tor) ctx += " | ⚠️ TOR EXIT NODE";
+      ctx += "\n";
+    });
+  }
+
+  if (hashResults.length > 0) {
+    ctx += "\nHash Reputation (VirusTotal):\n";
+    hashResults.forEach(r => {
+      if (!r) return;
+      const risk = r.malicious > 5 ? "MALICIOUS" : r.malicious > 0 ? "SUSPICIOUS" : "CLEAN";
+      ctx += "  " + r.hash.substring(0, 16) + "... — " + risk + " (" + r.malicious + "/" + r.total + " detections)";
+      if (r.detections && r.detections.length > 0) ctx += " | Engines: " + r.detections.map(d => d.engine).join(", ");
+      ctx += "\n";
+    });
+  }
+
+  ctx += "--- END THREAT INTELLIGENCE ---";
+  return ctx;
+}
+
+function LogAnalysis({ copy, onSendToPlaybook }) {
   const [logs, setLogs] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1110,38 +1648,92 @@ function LogAnalysis({ copy }) {
   const [showTokenMap, setShowTokenMap] = useState(false);
   const [preview, setPreview] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [customRules, setCustomRules] = useState([]);
+  const [enrichment, setEnrichment] = useState(null);  // { ipResults, hashResults, loading }
   const abortRef = useRef(null);
+
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const clear = () => {
     setLogs(""); setResult(""); setTokenMap(null);
     setShowTokenMap(false); setPreview(null); setShowPreview(false);
+    setCustomRules([]); setEnrichment(null);
   };
 
   const handleInput = (val) => {
     setLogs(val);
     setResult(""); setPreview(null); setTokenMap(null);
     if (!val.trim()) return;
-    const { redacted, tokenMap: tMap, wasJSON } = redactLog(val);
+    const { redacted, tokenMap: tMap, wasJSON, logCount } = redactLog(val);
     setTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
-    setPreview({ content: redacted, wasJSON });
+    setPreview({ content: redacted, wasJSON, logCount });
   };
 
   const analyze = async () => {
     if (!logs.trim()) return;
-    setLoading(true); setResult("");
+    setLoading(true); setResult(""); setEnrichment(null);
     abortRef.current = new AbortController();
     try {
-      const { redacted, tokenMap: tMap } = redactLog(logs);
+      const { redacted: baseRedacted, tokenMap: tMap } = redactLog(logs);
+      const redacted = applyCustomRedactions(baseRedacted, customRules);
       setTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
       setPreview({ content: redacted, wasJSON: true });
+
+      // ── Parallel threat intel enrichment (local only) ───────────────────────
+      let enrichCtx = "";
+      if (isLocal) {
+        const ips    = extractExternalIPs(redacted);
+        const hashes = extractHashes(redacted);
+        if (ips.length > 0 || hashes.length > 0) {
+          setEnrichment({ loading: true, ips, hashes, ipResults: [], hashResults: [] });
+          const [ipResults, hashResults] = await Promise.all([
+            Promise.all(ips.map(ip => enrichIP(ip))),
+            Promise.all(hashes.map(h => enrichHash(h))),
+          ]);
+          const validIPs    = ipResults.filter(Boolean);
+          const validHashes = hashResults.filter(Boolean);
+          setEnrichment({ loading: false, ips, hashes, ipResults: validIPs, hashResults: validHashes });
+          enrichCtx = buildEnrichmentContext(validIPs, validHashes);
+        }
+      }
+
+      // ── Build instruction string cleanly ────────────────────────────────────
+      const instruction = [
+        "Analyze these logs. Identify the log type and classify the overall finding as:",
+        "\u2705 Benign | \u26a0\ufe0f Suspicious | \ud83d\udea8 Malicious.",
+        "",
+        "Immediately after the classification line, provide a concise Activity Summary using exactly this format:",
+        "",
+        "**Activity Summary**",
+        "**Who:** [the user, account, or entity involved — use token if redacted, note if not available]",
+        "**What:** [what activity occurred in plain language — one to two sentences]",
+        "**When:** [timestamp from the log — note if not available]",
+        "**Where:** [host, network segment, service, or system affected — use token if redacted]",
+        "**Why:** [why this is significant — threat context, risk, or technique in plain language]",
+        "",
+        "Keep each field to two lines maximum. If a value is not present in the log, write \"Not available in log\" — do not guess or infer.",
+        "",
+        enrichCtx ? "THREAT INTELLIGENCE DATA is included below the log. Incorporate it into your Activity Summary and Findings where relevant — reference specific IPs or hashes by their token and note their threat status." : "",
+        "",
+        "After the Activity Summary, provide the detailed Findings:",
+        "1. What activity was observed — explain the behavior clearly",
+        "2. Why it is significant — context, risk, and potential impact",
+        "3. Key indicators — specific fields, values, or patterns that drove the classification",
+        "",
+        "Do NOT provide remediation steps or next steps — remediation is handled separately by the IR Playbook Generator.",
+        "If the finding is Suspicious or Malicious, end with a single line: \"\ud83d\udccb Remediation recommended — use the IR Playbook Generator for response steps.\"",
+      ].filter(l => l !== null).join("\n");
+
       await callClaude(
-        [{ role: "user", content: buildRedactedPrompt(redacted, "Analyze these logs. Classify each finding as Benign, Suspicious, or Malicious. Identify the log type. Provide next steps.", tMap) }],
+        [{ role: "user", content: buildRedactedPrompt(redacted + enrichCtx, instruction, tMap) }],
         setResult,
         abortRef.current.signal
       );
     } catch (e) { if (e.name !== "AbortError") setResult(`Error: ${e.message}`); }
     finally { setLoading(false); }
   };
+
 
   return (
     <div className="section">
@@ -1155,10 +1747,10 @@ function LogAnalysis({ copy }) {
       />
 
       {preview && (
-        <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
+        <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontWeight:600,color:"var(--ap-navy)"}}>
-              &#128737;&#65039; {tokenMap ? Object.keys(tokenMap).length + " value" + (Object.keys(tokenMap).length !== 1 ? "s" : "") + " redacted" : "Pattern sweep applied"} &mdash; {preview.wasJSON ? "JSON" : "plain text"}
+              &#128737;&#65039; {tokenMap ? Object.keys(tokenMap).length + " value" + (Object.keys(tokenMap).length !== 1 ? "s" : "") + " redacted" : "Pattern sweep applied"} &mdash; {preview.logCount > 1 ? preview.logCount + " logs detected" : preview.wasJSON ? "JSON" : "plain text"}
             </span>
             <div style={{display:"flex",gap:"0.75rem",alignItems:"center"}}>
               {tokenMap && (
@@ -1184,7 +1776,7 @@ function LogAnalysis({ copy }) {
                 {Object.entries(tokenMap).map(([token, val]) => (
                   <tr key={token}>
                     <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
-                    <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace"}}>{val}</td>
+                    <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace",wordBreak:"break-word",maxWidth:"260px"}}>{truncateTokenValue(val)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1193,9 +1785,13 @@ function LogAnalysis({ copy }) {
 
           {showPreview && (
             <pre style={{marginTop:"0.5rem",background:"var(--ap-white)",border:"1px solid var(--ap-border)",borderRadius:"4px",padding:"0.6rem",fontSize:"0.72rem",overflowX:"auto",maxHeight:"200px",overflowY:"auto",color:"var(--ap-text)",fontFamily:"'Source Code Pro',monospace",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
-              {preview.content}
+              {applyCustomRedactions(preview.content, customRules)}
             </pre>
           )}
+          <CustomRedactionPanel
+            text={preview ? applyCustomRedactions(preview.content, customRules) : ""}
+            onRedact={setCustomRules}
+          />
         </div>
       )}
 
@@ -1203,12 +1799,56 @@ function LogAnalysis({ copy }) {
         <button className="btn" onClick={analyze} disabled={loading || !logs.trim()}>
           {loading ? <><Spinner /> Analyzing...</> : "Analyze Logs"}
         </button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!logs && !result}>Clear</button>
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!logs && !result}>Clear</button>
       </div>
+
+      {enrichment && (
+        <div style={{background:"rgba(39,174,96,0.06)",border:"1px solid rgba(39,174,96,0.25)",borderLeft:"3px solid #27ae60",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.8rem"}}>
+          <div style={{fontWeight:600,color:"var(--ap-navy)",marginBottom:"0.4rem"}}>
+            {enrichment.loading
+              ? <><Spinner /> Gathering threat intelligence...</>
+              : "\uD83D\uDD0E Threat Intel Enrichment — included in analysis"}
+          </div>
+          {!enrichment.loading && (
+            <div style={{display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+              {enrichment.ipResults.map(r => r && (
+                <div key={r.ip} style={{fontSize:"0.75rem",display:"flex",gap:"0.75rem",alignItems:"center"}}>
+                  <span style={{fontFamily:"monospace",color:"var(--ap-navy)",fontWeight:600,minWidth:"120px"}}>{r.ip}</span>
+                  <span style={{color: r.score > 50 ? "var(--ap-danger)" : r.score > 10 ? "var(--ap-warn)" : "#27ae60", fontWeight:600}}>
+                    {r.score > 50 ? "HIGH RISK" : r.score > 10 ? "SUSPICIOUS" : "CLEAN"} ({r.score}%)
+                  </span>
+                  {r.isp && <span style={{color:"var(--ap-text-light)"}}>{r.isp}</span>}
+                  {r.is_tor && <span style={{color:"var(--ap-danger)",fontWeight:600}}>⚠️ TOR</span>}
+                </div>
+              ))}
+              {enrichment.hashResults.map(r => r && (
+                <div key={r.hash} style={{fontSize:"0.75rem",display:"flex",gap:"0.75rem",alignItems:"center"}}>
+                  <span style={{fontFamily:"monospace",color:"var(--ap-navy)",fontWeight:600,minWidth:"120px"}}>{r.hash.substring(0,16)}...</span>
+                  <span style={{color: r.malicious > 5 ? "var(--ap-danger)" : r.malicious > 0 ? "var(--ap-warn)" : "#27ae60", fontWeight:600}}>
+                    {r.malicious > 5 ? "MALICIOUS" : r.malicious > 0 ? "SUSPICIOUS" : "CLEAN"} ({r.malicious}/{r.total})
+                  </span>
+                  {r.detections && r.detections.length > 0 && <span style={{color:"var(--ap-text-light)"}}>{r.detections.map(d => d.engine).join(", ")}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {result && onSendToPlaybook && (
+        <button
+          onClick={() => { onSendToPlaybook(result); }}
+          style={{background:"var(--ap-navy)",border:"none",borderRadius:"6px",color:"var(--ap-blue)",
+            fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:"0.78rem",
+            padding:"0.55rem 1.1rem",cursor:"pointer",letterSpacing:"0.03em",width:"100%"}}>
+          &#128203; Generate IR Playbook from this Analysis
+        </button>
+      )}
       <ResultBox content={result} onCopy={copy} label="Copy Results" />
     </div>
   );
 }
+
 
 
 function CsvAnalysis({ copy }) {
@@ -1247,7 +1887,7 @@ function CsvAnalysis({ copy }) {
         <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
       </label>
       {tokenMap && (
-        <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
+        <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom: showTokenMap ? "0.5rem" : 0}}>
             <span style={{fontWeight:600,color:"var(--ap-navy)"}}>🛡️ PII Redacted — {Object.keys(tokenMap).length} value{Object.keys(tokenMap).length !== 1 ? "s" : ""} masked before submission</span>
             <button onClick={() => setShowTokenMap(v => !v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.75rem",cursor:"pointer"}}>
@@ -1266,7 +1906,7 @@ function CsvAnalysis({ copy }) {
                 {Object.entries(tokenMap).map(([token, val]) => (
                   <tr key={token}>
                     <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
-                    <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace"}}>{val}</td>
+                    <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace",wordBreak:"break-word",maxWidth:"260px"}}>{truncateTokenValue(val)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1274,7 +1914,7 @@ function CsvAnalysis({ copy }) {
           )}
         </div>
       )}
-      {(fileName || result) && <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)"}} onClick={clear}>Clear</button>}
+      {(fileName || result) && <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)"}} onClick={clear}>Clear</button>}
       {loading && <div className="loading-text"><Spinner /> Analyzing CSV...</div>}
       <ResultBox content={result} onCopy={copy} label="Copy Results" />
     </div>
@@ -1316,13 +1956,19 @@ function IOCExtractor({ copy }) {
   const [input, setInput] = useState("");
   const [iocs, setIOCs] = useState(null);
   const [copied, setCopied] = useState("");
+  const [lookupResults, setLookupResults] = useState({});
+  const [lookingUp, setLookingUp] = useState({});
+
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const extract = () => {
     if (!input.trim()) return;
     setIOCs(extractIOCs(input));
+    setLookupResults({});
   };
 
-  const clear = () => { setInput(""); setIOCs(null); setCopied(""); };
+  const clear = () => { setInput(""); setIOCs(null); setCopied(""); setLookupResults({}); setLookingUp({}); };
 
   const copyOne = (val) => {
     copy(val);
@@ -1351,6 +1997,62 @@ function IOCExtractor({ copy }) {
     URL.revokeObjectURL(url);
   };
 
+  // Determine what lookup to run per IOC type
+  const getLookupType = (iocType) => {
+    if (iocType === "External IPs" || iocType === "Internal IPs") return "ip";
+    if (iocType === "Domains") return "domain";
+    if (iocType === "SHA256 Hashes" || iocType === "MD5 Hashes" || iocType === "SHA1 Hashes") return "hash";
+    if (iocType === "URLs") return "url";
+    return null;
+  };
+
+  const runLookup = async (iocType, val) => {
+    const lookupType = getLookupType(iocType);
+    if (!lookupType || !isLocal) return;
+    const key = val;
+    setLookingUp(p => ({ ...p, [key]: true }));
+    try {
+      let result = null;
+      if (lookupType === "ip") {
+        const res = await fetch("/api/abuseipdb?ip=" + encodeURIComponent(val));
+        if (res.ok) { const d = await res.json(); result = { source: "AbuseIPDB", ...d.summary }; }
+      } else {
+        const res = await fetch("/api/virustotal?type=" + lookupType + "&value=" + encodeURIComponent(val));
+        if (res.ok) { const d = await res.json(); result = { source: "VirusTotal", ...d.summary }; }
+      }
+      setLookupResults(p => ({ ...p, [key]: result }));
+    } catch (e) {
+      setLookupResults(p => ({ ...p, [key]: { error: e.message } }));
+    } finally {
+      setLookingUp(p => ({ ...p, [key]: false }));
+    }
+  };
+
+  const renderLookupResult = (val) => {
+    const r = lookupResults[val];
+    if (!r) return null;
+    if (r.error) return <span style={{fontSize:"0.68rem",color:"var(--ap-danger)"}}>Error</span>;
+    if (r.source === "AbuseIPDB") {
+      const risk = r.abuse_confidence > 50 ? "HIGH" : r.abuse_confidence > 10 ? "SUSPICIOUS" : "CLEAN";
+      const color = r.abuse_confidence > 50 ? "var(--ap-danger)" : r.abuse_confidence > 10 ? "var(--ap-warn)" : "#27ae60";
+      return (
+        <span style={{fontSize:"0.68rem",fontWeight:600,color}}>
+          {risk} {r.abuse_confidence}% | {r.isp || r.country || ""}
+        </span>
+      );
+    }
+    if (r.source === "VirusTotal") {
+      const risk = r.malicious > 5 ? "MALICIOUS" : r.malicious > 0 ? "SUSPICIOUS" : "CLEAN";
+      const color = r.malicious > 5 ? "var(--ap-danger)" : r.malicious > 0 ? "var(--ap-warn)" : "#27ae60";
+      return (
+        <span style={{fontSize:"0.68rem",fontWeight:600,color}}>
+          {risk} {r.malicious}/{r.total}
+        </span>
+      );
+    }
+    return null;
+  };
+
   const totalCount = iocs ? Object.values(iocs).reduce((s, v) => s + v.length, 0) : 0;
 
   return (
@@ -1360,7 +2062,7 @@ function IOCExtractor({ copy }) {
       <textarea className="textarea" placeholder="Paste Claude's analysis output or any log text containing IPs, hashes, domains, URLs, registry keys..." value={input} onChange={e => setInput(e.target.value)} style={{minHeight:"100px"}}/>
       <div className="btn-row">
         <button className="btn" onClick={extract} disabled={!input.trim()}>Extract IOCs</button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!input && !iocs}>Clear</button>
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!input && !iocs}>Clear</button>
       </div>
 
       {iocs && totalCount === 0 && (
@@ -1376,29 +2078,41 @@ function IOCExtractor({ copy }) {
               &#128269; {totalCount} indicator{totalCount !== 1 ? "s" : ""} extracted
             </span>
             <div style={{display:"flex",gap:"0.5rem"}}>
-              <button onClick={copyAll} style={{background:"none",border:"1px solid rgba(124,111,232,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Copy All</button>
-              <button onClick={exportCSV} style={{background:"none",border:"1px solid rgba(124,111,232,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Export CSV</button>
+              <button onClick={copyAll} style={{background:"none",border:"1px solid rgba(63,186,234,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Copy All</button>
+              <button onClick={exportCSV} style={{background:"none",border:"1px solid rgba(63,186,234,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Export CSV</button>
             </div>
           </div>
 
-          {Object.entries(iocs).map(([type, vals]) => (
-            <div key={type} style={{background:"var(--ap-offwhite)",border:"1px solid var(--ap-border)",borderRadius:"6px",overflow:"hidden"}}>
-              <div style={{background:"rgba(18,16,42,0.06)",borderBottom:"1px solid var(--ap-border)",padding:"0.4rem 0.875rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontFamily:"'Montserrat',sans-serif",fontSize:"0.72rem",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--ap-text-mid)"}}>
-                  {type} <span style={{color:"var(--ap-blue)",marginLeft:"4px"}}>{vals.length}</span>
-                </span>
-                <button onClick={() => copy(vals.join("\n"))} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontSize:"0.7rem",fontWeight:600,cursor:"pointer"}}>Copy all</button>
-              </div>
-              {vals.map((val, i) => (
-                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.45rem 0.875rem",borderBottom: i < vals.length-1 ? "1px solid var(--ap-border)" : "none",gap:"0.5rem"}}>
-                  <span style={{fontFamily:"'Source Code Pro',monospace",fontSize:"0.78rem",color:"var(--ap-text)",wordBreak:"break-all",flex:1}}>{val}</span>
-                  <button onClick={() => copyOne(val)} style={{background: copied === val ? "rgba(39,174,96,0.1)" : "none",border:"1px solid " + (copied === val ? "rgba(39,174,96,0.3)" : "var(--ap-border)"),borderRadius:"4px",color: copied === val ? "#27ae60" : "var(--ap-text-light)",fontSize:"0.68rem",fontWeight:600,padding:"2px 8px",cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s",flexShrink:0}}>
-                    {copied === val ? "Copied!" : "Copy"}
-                  </button>
+          {Object.entries(iocs).map(([type, vals]) => {
+            const canLookup = isLocal && getLookupType(type) !== null;
+            return (
+              <div key={type} style={{background:"var(--ap-offwhite)",border:"1px solid var(--ap-border)",borderRadius:"6px",overflow:"hidden"}}>
+                <div style={{background:"rgba(26,43,60,0.06)",borderBottom:"1px solid var(--ap-border)",padding:"0.4rem 0.875rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontFamily:"'Montserrat',sans-serif",fontSize:"0.72rem",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--ap-text-mid)"}}>
+                    {type} <span style={{color:"var(--ap-blue)",marginLeft:"4px"}}>{vals.length}</span>
+                  </span>
+                  <button onClick={() => copy(vals.join("\n"))} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontSize:"0.7rem",fontWeight:600,cursor:"pointer"}}>Copy all</button>
                 </div>
-              ))}
-            </div>
-          ))}
+                {vals.map((val, i) => (
+                  <div key={i} style={{display:"flex",alignItems:"center",padding:"0.45rem 0.875rem",borderBottom: i < vals.length-1 ? "1px solid var(--ap-border)" : "none",gap:"0.5rem",flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"'Source Code Pro',monospace",fontSize:"0.78rem",color:"var(--ap-text)",wordBreak:"break-all",flex:1}}>{val}</span>
+                    {renderLookupResult(val) && <span style={{flexShrink:0}}>{renderLookupResult(val)}</span>}
+                    <div style={{display:"flex",gap:"0.3rem",flexShrink:0}}>
+                      {canLookup && !lookupResults[val] && (
+                        <button onClick={() => runLookup(type, val)} disabled={lookingUp[val]}
+                          style={{background:"rgba(63,186,234,0.1)",border:"1px solid rgba(63,186,234,0.3)",borderRadius:"4px",color:"var(--ap-blue-dark)",fontSize:"0.68rem",fontWeight:600,padding:"2px 7px",cursor:"pointer"}}>
+                          {lookingUp[val] ? <Spinner /> : "\uD83D\uDD0E Lookup"}
+                        </button>
+                      )}
+                      <button onClick={() => copyOne(val)} style={{background: copied === val ? "rgba(39,174,96,0.1)" : "none",border:"1px solid " + (copied === val ? "rgba(39,174,96,0.3)" : "var(--ap-border)"),borderRadius:"4px",color: copied === val ? "#27ae60" : "var(--ap-text-light)",fontSize:"0.68rem",fontWeight:600,padding:"2px 8px",cursor:"pointer",transition:"all 0.2s"}}>
+                        {copied === val ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1407,96 +2121,459 @@ function IOCExtractor({ copy }) {
 
 function ThreatIntel({ copy }) {
   const [indicator, setIndicator] = useState("");
-  const [result, setResult] = useState("");
+  const [vtResult, setVtResult] = useState(null);
+  const [abResult, setAbResult] = useState(null);
+  const [aiResult, setAiResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState(""); // "vt" | "ab" | "ai" | ""
+  const [error, setError] = useState("");
 
-  const clear = () => { setIndicator(""); setResult(""); };
+  const clear = () => {
+    setIndicator(""); setVtResult(null); setAbResult(null);
+    setAiResult(""); setLoading(false); setPhase(""); setError("");
+  };
+
+  // Detect indicator type
+  const detectType = (val) => {
+    const v = val.trim();
+    if (/^[a-fA-F0-9]{64}$/.test(v)) return "hash";
+    if (/^[a-fA-F0-9]{40}$/.test(v)) return "hash";
+    if (/^[a-fA-F0-9]{32}$/.test(v)) return "hash";
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v)) return "ip";
+    if (/^https?:\/\//i.test(v)) return "url";
+    if (/^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/.test(v)) return "domain";
+    return "unknown";
+  };
+
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const lookup = async () => {
     if (!indicator.trim()) return;
-    setLoading(true); setResult("");
+    setLoading(true); setVtResult(null); setAbResult(null); setAiResult(""); setError("");
+    const val = indicator.trim();
+    const type = detectType(val);
+    let vtData = null, abData = null;
+
+    // ── Step 1: VirusTotal ──────────────────────────────────────────────────
+    if (isLocal && type !== "unknown") {
+      try {
+        setPhase("vt");
+        const params = new URLSearchParams({ type: type === "hash" ? "hash" : type, value: val });
+        const res = await fetch("/api/virustotal?" + params);
+        if (res.ok) { vtData = await res.json(); setVtResult(vtData); }
+        else {
+          const err = await res.json().catch(() => ({}));
+          if (err.error && err.error.includes("not configured")) {
+            setVtResult({ unavailable: true });
+          }
+        }
+      } catch { setVtResult({ unavailable: true }); }
+    }
+
+    // ── Step 2: AbuseIPDB (IPs only) ───────────────────────────────────────
+    if (isLocal && type === "ip") {
+      try {
+        setPhase("ab");
+        const res = await fetch("/api/abuseipdb?ip=" + encodeURIComponent(val));
+        if (res.ok) { abData = await res.json(); setAbResult(abData); }
+        else {
+          const err = await res.json().catch(() => ({}));
+          if (err.error && err.error.includes("not configured")) {
+            setAbResult({ unavailable: true });
+          }
+        }
+      } catch { setAbResult({ unavailable: true }); }
+    }
+
+    // ── Step 3: Claude analysis ────────────────────────────────────────────
+    setPhase("ai");
     try {
-      await callClaude(
-        [{ role: "user", content: `Perform a threat intelligence assessment for this indicator: ${indicator}\n\nCover: known associations, threat actor attribution if known, reputation, recommended actions.` }],
-        setResult
-      );
-    } catch (e) { setResult(`Error: ${e.message}`); }
-    finally { setLoading(false); }
+      let contextBlock = "";
+      if (vtData && vtData.summary) {
+        const s = vtData.summary;
+        contextBlock += "VirusTotal Results:\n" +
+          "  Malicious detections: " + s.malicious + "/" + s.total + "\n" +
+          "  Suspicious: " + s.suspicious + "\n" +
+          "  Reputation score: " + s.reputation + "\n" +
+          (s.country ? "  Country: " + s.country + "\n" : "") +
+          (s.as_owner ? "  AS Owner: " + s.as_owner + "\n" : "") +
+          (s.tags && s.tags.length ? "  Tags: " + s.tags.join(", ") + "\n" : "") +
+          (s.detections && s.detections.length
+            ? "  Top detections: " + s.detections.map(d => d.engine + " (" + d.result + ")").join(", ") + "\n"
+            : "") + "\n";
+      }
+      if (abData && abData.summary) {
+        const s = abData.summary;
+        contextBlock += "AbuseIPDB Results:\n" +
+          "  Abuse confidence score: " + s.abuse_confidence + "%\n" +
+          "  Total reports: " + s.total_reports + "\n" +
+          "  Country: " + (s.country || "unknown") + "\n" +
+          "  ISP: " + (s.isp || "unknown") + "\n" +
+          "  Usage type: " + (s.usage_type || "unknown") + "\n" +
+          (s.is_tor ? "  ⚠️ TOR exit node\n" : "") +
+          (s.last_reported_at ? "  Last reported: " + s.last_reported_at + "\n" : "") + "\n";
+      }
+      const prompt = "Perform a threat intelligence assessment for this indicator: " + val +
+        " (type: " + type + ")\n\n" +
+        (contextBlock ? "External intelligence gathered:\n" + contextBlock : "") +
+        "Based on" + (contextBlock ? " the above data and" : "") + " your training knowledge, provide:\n" +
+        "1. Overall threat verdict (Malicious / Suspicious / Clean / Unknown)\n" +
+        "2. Known threat actor associations or malware families if applicable\n" +
+        "3. Context on why this indicator is significant\n" +
+        "4. Recommended immediate actions\n" +
+        "5. Suggested hunting queries or pivot points";
+      await callClaude([{ role: "user", content: prompt }], setAiResult);
+    } catch (e) { setError("Claude error: " + e.message); }
+    finally { setLoading(false); setPhase(""); }
   };
+
+  const isMalicious = vtResult && vtResult.summary && vtResult.summary.malicious > 0;
+  const isClean = vtResult && vtResult.summary && vtResult.summary.malicious === 0 && vtResult.summary.suspicious === 0;
+  const abuseScore = abResult && abResult.summary ? abResult.summary.abuse_confidence : null;
 
   return (
     <div className="section">
       <h2 className="section-title">Threat Intelligence</h2>
-      <label className="field-label">Indicator (IP, domain, hash)</label>
-      <input className="input" placeholder="e.g. 185.220.101.45 or abc123...hash" value={indicator} onChange={e => setIndicator(e.target.value)}
+      <label className="field-label">Indicator (IP, domain, hash, URL)</label>
+      <input className="input" placeholder="e.g. 185.220.101.45, evil.com, abc123...sha256"
+        value={indicator} onChange={e => setIndicator(e.target.value)}
         onKeyDown={e => e.key === "Enter" && lookup()} />
+
       <div className="btn-row">
         <button className="btn" onClick={lookup} disabled={loading || !indicator.trim()}>
-          {loading ? <><Spinner /> Looking up...</> : "Threat Intel Lookup"}
+          {loading
+            ? <><Spinner /> {phase === "vt" ? "VirusTotal..." : phase === "ab" ? "AbuseIPDB..." : "Analyzing..."}</>
+            : "🔍 Threat Intel Lookup"}
         </button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!indicator && !result}>Clear</button>
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!indicator && !vtResult && !aiResult}>Clear</button>
       </div>
-      <ResultBox content={result} onCopy={copy} label="Copy Intel" />
+
+      {!isLocal && (
+        <div style={{background:"#fff8e6",border:"1px solid #f0ad4e",borderLeft:"3px solid #f0ad4e",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.78rem",color:"#7a5800"}}>
+          ⚠️ Running in artifact mode — VirusTotal and AbuseIPDB require the local deployment. Claude analysis only.
+        </div>
+      )}
+
+      {error && (
+        <div style={{background:"#fff3f3",border:"1px solid var(--ap-danger)",borderLeft:"3px solid var(--ap-danger)",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.78rem",color:"var(--ap-danger)"}}>
+          {error}
+        </div>
+      )}
+
+      {/* VirusTotal results card */}
+      {vtResult && !vtResult.unavailable && vtResult.summary && (
+        <div style={{background: isMalicious ? "rgba(231,76,60,0.06)" : isClean ? "rgba(39,174,96,0.06)" : "var(--ap-offwhite)",
+          border:"1px solid " + (isMalicious ? "rgba(231,76,60,0.3)" : isClean ? "rgba(39,174,96,0.3)" : "var(--ap-border)"),
+          borderLeft:"3px solid " + (isMalicious ? "var(--ap-danger)" : isClean ? "var(--ap-success)" : "var(--ap-text-light)"),
+          borderRadius:"6px",padding:"0.75rem 1rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.5rem"}}>
+            <span style={{fontWeight:700,fontSize:"0.78rem",color:"var(--ap-navy)",fontFamily:"'Montserrat',sans-serif",textTransform:"uppercase",letterSpacing:"0.06em"}}>
+              VirusTotal
+            </span>
+            <span style={{fontWeight:700,fontSize:"0.82rem",color: isMalicious ? "var(--ap-danger)" : isClean ? "var(--ap-success)" : "var(--ap-warn)"}}>
+              {vtResult.summary.malicious}/{vtResult.summary.total} detections
+            </span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.3rem 1rem",fontSize:"0.78rem",marginTop:"0.25rem"}}>
+            {vtResult.summary.country && (
+              <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Country</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{vtResult.summary.country}</div></div>
+            )}
+            {vtResult.summary.as_owner && (
+              <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>ASN Owner</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{vtResult.summary.as_owner}</div></div>
+            )}
+            {vtResult.summary.reputation !== undefined && (
+              <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Reputation</span><div style={{color:vtResult.summary.reputation < 0 ? "var(--ap-danger)" : "var(--ap-success)",fontWeight:600}}>{vtResult.summary.reputation}</div></div>
+            )}
+            {vtResult.summary.last_analysis_date && (
+              <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Last Scanned</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{vtResult.summary.last_analysis_date.substring(0,10)}</div></div>
+            )}
+          </div>
+          {vtResult.summary.tags && vtResult.summary.tags.length > 0 && (
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.4rem"}}>
+              {vtResult.summary.tags.slice(0,5).map(t => (
+                <span key={t} style={{background:"rgba(63,186,234,0.12)",color:"var(--ap-blue-dark)",padding:"2px 8px",borderRadius:"10px",fontSize:"0.68rem",fontWeight:600}}>{t}</span>
+              ))}
+              {vtResult.summary.is_tor && <span style={{background:"rgba(231,76,60,0.12)",color:"var(--ap-danger)",padding:"2px 8px",borderRadius:"10px",fontSize:"0.68rem",fontWeight:600}}>⚠️ TOR</span>}
+            </div>
+          )}
+          {vtResult.summary.detections && vtResult.summary.detections.length > 0 && (
+            <div style={{marginTop:"0.5rem",padding:"0.4rem 0.6rem",background:"rgba(231,76,60,0.06)",borderRadius:"4px",fontSize:"0.72rem",color:"var(--ap-danger)"}}>
+              <strong>Flagged by:</strong> {vtResult.summary.detections.slice(0,6).map(d => d.engine).join(", ")}
+              {vtResult.summary.detections.length > 6 && <span style={{color:"var(--ap-text-light)"}}> +{vtResult.summary.detections.length - 6} more</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AbuseIPDB results card */}
+      {abResult && !abResult.unavailable && abResult.summary && (
+        <div style={{background: abuseScore > 50 ? "rgba(231,76,60,0.06)" : abuseScore > 10 ? "rgba(230,126,34,0.06)" : "rgba(39,174,96,0.06)",
+          border:"1px solid " + (abuseScore > 50 ? "rgba(231,76,60,0.3)" : abuseScore > 10 ? "rgba(230,126,34,0.3)" : "rgba(39,174,96,0.3)"),
+          borderLeft:"3px solid " + (abuseScore > 50 ? "var(--ap-danger)" : abuseScore > 10 ? "var(--ap-warn)" : "var(--ap-success)"),
+          borderRadius:"6px",padding:"0.75rem 1rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.5rem"}}>
+            <span style={{fontWeight:700,fontSize:"0.78rem",color:"var(--ap-navy)",fontFamily:"'Montserrat',sans-serif",textTransform:"uppercase",letterSpacing:"0.06em"}}>
+              AbuseIPDB
+            </span>
+            <span style={{fontWeight:700,fontSize:"0.82rem",
+              color: abuseScore > 50 ? "var(--ap-danger)" : abuseScore > 10 ? "var(--ap-warn)" : "var(--ap-success)"}}>
+              {abuseScore}% abuse confidence
+            </span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.3rem 1rem",fontSize:"0.78rem",marginTop:"0.25rem"}}>
+            <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Total Reports</span><div style={{color:"var(--ap-text)",fontWeight:600}}>{abResult.summary.total_reports}</div></div>
+            {abResult.summary.isp && <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>ISP</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{abResult.summary.isp}</div></div>}
+            {abResult.summary.usage_type && <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Usage Type</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{abResult.summary.usage_type}</div></div>}
+            {abResult.summary.country && <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Country</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{abResult.summary.country}</div></div>}
+            {abResult.summary.domain && <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Domain</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{abResult.summary.domain}</div></div>}
+            {abResult.summary.last_reported_at && <div><span style={{color:"var(--ap-text-light)",fontSize:"0.68rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>Last Reported</span><div style={{color:"var(--ap-text)",fontWeight:500}}>{abResult.summary.last_reported_at.substring(0,10)}</div></div>}
+          </div>
+          {abResult.summary.is_tor && (
+            <div style={{marginTop:"0.4rem"}}>
+              <span style={{background:"rgba(231,76,60,0.12)",color:"var(--ap-danger)",padding:"2px 8px",borderRadius:"10px",fontSize:"0.68rem",fontWeight:600}}>⚠️ TOR Exit Node</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Claude AI analysis */}
+      {aiResult && <ResultBox content={aiResult} onCopy={copy} label="Copy Intel" />}
     </div>
   );
 }
 
-function Playbook({ copy }) {
-  const [details, setDetails] = useState("");
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+function Playbook({ copy, externalInput, onExternalInputUsed }) {
+  const { useEffect, useRef } = React;
 
-  const clear = () => { setDetails(""); setResult(""); };
+  const PHASES = [
+    { id: 1, label: "Identification",  icon: "🔍",
+      prompt: "Generate ONLY Phase 1 — Identification of an incident response playbook.\n\nInclude:\n- Detection indicators and alert triage steps\n- Log sources to review\n- Initial scope assessment\n- Key questions to answer during identification\n\nBe specific and technical. Use bullet points." },
+    { id: 2, label: "Containment",     icon: "🛡️",
+      prompt: "Generate ONLY Phase 2 — Containment of an incident response playbook.\n\nInclude:\n- Immediate short-term containment actions\n- Long-term containment strategies\n- Evidence preservation steps\n- Isolation procedures\n\nBe specific and technical. Use bullet points." },
+    { id: 3, label: "Eradication",     icon: "🧹",
+      prompt: "Generate ONLY Phase 3 — Eradication of an incident response playbook.\n\nInclude:\n- Remove threat artifacts and malicious files\n- Patch or remediate the root cause\n- Registry and persistence cleanup\n- Verification that eradication is complete\n\nBe specific and technical. Use bullet points." },
+    { id: 4, label: "Recovery",        icon: "🔄",
+      prompt: "Generate ONLY Phase 4 — Recovery of an incident response playbook.\n\nInclude:\n- Steps to restore affected systems safely\n- Validation and monitoring during recovery\n- Return to normal operations criteria\n- Post-recovery verification checks\n\nBe specific and technical. Use bullet points." },
+    { id: 5, label: "Lessons Learned", icon: "📋",
+      prompt: "Generate ONLY Phase 5 — Lessons Learned of an incident response playbook.\n\nInclude:\n- Post-incident review checklist\n- Root cause analysis\n- Recommended detection improvements\n- Documentation and reporting requirements\n- Process improvement recommendations\n\nBe specific and technical. Use bullet points." },
+  ];
+
+  const [details, setDetails] = useState("");
+  const [phases, setPhases] = useState({});
+  const [expanded, setExpanded] = useState({});
+  const [currentPhase, setCurrentPhase] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const abortRef = useRef(null);
+  const stoppedRef = useRef(false);
+
+  useEffect(() => {
+    if (externalInput) {
+      setDetails(externalInput);
+      setPhases({}); setExpanded({}); setCurrentPhase(0); setGenerating(false);
+      stoppedRef.current = false;
+      if (onExternalInputUsed) onExternalInputUsed();
+    }
+  }, [externalInput]);
+
+  const clear = () => {
+    if (abortRef.current) abortRef.current.abort();
+    stoppedRef.current = true;
+    setDetails(""); setPhases({}); setExpanded({});
+    setCurrentPhase(0); setGenerating(false);
+  };
+
+  const toggleExpand = (id) => setExpanded(v => ({ ...v, [id]: !v[id] }));
+
+  const expandAll = () => {
+    const all = {};
+    PHASES.forEach(p => { all[p.id] = true; });
+    setExpanded(all);
+  };
+
+  const stop = () => {
+    stoppedRef.current = true;
+    if (abortRef.current) abortRef.current.abort();
+    setGenerating(false);
+    setCurrentPhase(0);
+  };
 
   const generate = async () => {
     if (!details.trim()) return;
-    setLoading(true); setResult("");
-    try {
-      await callClaude(
-        [{ role: "user", content: `Generate a structured incident response playbook for: ${details}\n\nInclude phases: Identification, Containment, Eradication, Recovery, Lessons Learned. Add specific technical steps per phase.` }],
-        setResult
-      );
-    } catch (e) { setResult(`Error: ${e.message}`); }
-    finally { setLoading(false); }
+    setPhases({}); setExpanded({}); setGenerating(true);
+    stoppedRef.current = false;
+    abortRef.current = new AbortController();
+
+    for (const phase of PHASES) {
+      // Check stop flag at start of each phase — catches between-phase stops
+      if (stoppedRef.current || abortRef.current.signal.aborted) {
+        setGenerating(false); setCurrentPhase(0); return;
+      }
+
+      setCurrentPhase(phase.id);
+      setPhases(prev => ({ ...prev, [phase.id]: { content: "", status: "generating" } }));
+      setExpanded(prev => ({ ...prev, [phase.id]: true }));
+
+      const prompt = "Incident type: " + details + "\n\n" + phase.prompt;
+
+      try {
+        await callClaude(
+          [{ role: "user", content: prompt }],
+          (chunk) => {
+            setPhases(prev => ({ ...prev, [phase.id]: { content: chunk, status: "generating" } }));
+          },
+          abortRef.current.signal
+        );
+
+        // Only mark done if we weren't stopped mid-stream
+        if (!stoppedRef.current) {
+          setPhases(prev => ({ ...prev, [phase.id]: { ...prev[phase.id], status: "done" } }));
+          setTimeout(() => {
+            setExpanded(prev => ({ ...prev, [phase.id]: false }));
+          }, 2500);
+        }
+      } catch (e) {
+        if (e.name === "AbortError" || stoppedRef.current) {
+          // Mark the partial phase as stopped rather than error
+          setPhases(prev => {
+            const existing = prev[phase.id];
+            if (existing && existing.content) {
+              return { ...prev, [phase.id]: { ...existing, status: "done" } };
+            }
+            const updated = { ...prev };
+            delete updated[phase.id];
+            return updated;
+          });
+          setGenerating(false); setCurrentPhase(0); return;
+        }
+        setPhases(prev => ({ ...prev, [phase.id]: { content: "Error: " + e.message, status: "error" } }));
+      }
+    }
+
+    setGenerating(false);
+    setCurrentPhase(0);
   };
+
+  const copyFull = () => {
+    const full = PHASES
+      .filter(p => phases[p.id] && phases[p.id].content)
+      .map(p => "## Phase " + p.id + ": " + p.label + "\n\n" + phases[p.id].content)
+      .join("\n\n---\n\n");
+    copy("IR Playbook: " + details + "\n\n" + full);
+  };
+
+  const allDone = PHASES.every(p => phases[p.id] && phases[p.id].status === "done");
+  const anyDone = PHASES.some(p => phases[p.id] && phases[p.id].content);
+
+  const STATUS_ICON  = { generating: "⏳", done: "✅", error: "❌" };
+  const STATUS_COLOR = { generating: "var(--ap-blue)", done: "#27ae60", error: "var(--ap-danger)" };
 
   return (
     <div className="section border-top">
-      <h2 className="section-title">Playbook Generator</h2>
+      <h2 className="section-title">IR Playbook Generator</h2>
       <label className="field-label">Describe the incident type</label>
-      <textarea className="textarea" placeholder="e.g. Ransomware on Windows endpoint, lateral movement detected..." value={details} onChange={e => setDetails(e.target.value)} />
+      <textarea className="textarea"
+        placeholder="e.g. Ransomware on Windows endpoint, O365 account compromise, lateral movement detected... (or click Generate IR Playbook from Log Analysis to auto-fill)"
+        value={details} onChange={e => setDetails(e.target.value)} />
+
+      {generating && (
+        <div style={{background:"var(--ap-offwhite)",border:"1px solid var(--ap-border)",borderRadius:"6px",padding:"0.6rem 1rem",fontSize:"0.8rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.4rem"}}>
+            <span style={{fontWeight:600,color:"var(--ap-navy)"}}>
+              &#9203; Phase {currentPhase} of 5 — {PHASES[currentPhase-1] && PHASES[currentPhase-1].label}
+            </span>
+            <button onClick={stop} style={{background:"none",border:"1px solid var(--ap-danger)",borderRadius:"4px",color:"var(--ap-danger)",fontSize:"0.7rem",fontWeight:600,padding:"2px 8px",cursor:"pointer"}}>
+              &#9646;&#9646; Stop
+            </button>
+          </div>
+          <div style={{display:"flex",gap:"4px"}}>
+            {PHASES.map(p => (
+              <div key={p.id} style={{flex:1,height:"6px",borderRadius:"3px",
+                background: p.id < currentPhase ? "#27ae60" : p.id === currentPhase ? "var(--ap-blue)" : "var(--ap-border)",
+                transition:"background 0.3s"}} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="btn-row">
-        <button className="btn" onClick={generate} disabled={loading || !details.trim()}>
-          {loading ? <><Spinner /> Generating...</> : "Generate Playbook"}
-        </button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!details && !result}>Clear</button>
+        {!generating ? (
+          <button className="btn" onClick={generate} disabled={!details.trim()}>
+            &#9654; Generate IR Playbook
+          </button>
+        ) : (
+          <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)"}} onClick={stop}>
+            &#9646;&#9646; Stop Generation
+          </button>
+        )}
+        {anyDone && !generating && (
+          <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={expandAll}>
+            Expand All
+          </button>
+        )}
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!details && !anyDone}>Clear</button>
       </div>
-      <ResultBox content={result} onCopy={copy} label="Copy Playbook" />
+
+      {PHASES.map(phase => {
+        const state    = phases[phase.id];
+        const isExpanded   = expanded[phase.id];
+        const isPending    = !state;
+        const isGenerating = state && state.status === "generating";
+        const isDone       = state && state.status === "done";
+
+        if (isPending && !generating && !anyDone) return null;
+
+        return (
+          <div key={phase.id} style={{border:"1px solid var(--ap-border)",borderRadius:"8px",overflow:"hidden",opacity:isPending?0.45:1,transition:"opacity 0.3s"}}>
+            <div
+              onClick={() => !isPending && toggleExpand(phase.id)}
+              style={{background:isGenerating?"var(--ap-blue-pale)":isDone?"rgba(39,174,96,0.06)":"var(--ap-offwhite)",
+                borderBottom:isExpanded?"1px solid var(--ap-border)":"none",
+                padding:"0.65rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",
+                cursor:isPending?"default":"pointer",userSelect:"none",transition:"background 0.2s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.6rem"}}>
+                <span style={{fontSize:"0.9rem"}}>{phase.icon}</span>
+                <span style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:"0.82rem",color:"var(--ap-navy)"}}>
+                  Phase {phase.id} — {phase.label}
+                </span>
+                {state && (
+                  <span style={{fontSize:"0.8rem",color:STATUS_COLOR[state.status]}}>
+                    {STATUS_ICON[state.status]}
+                  </span>
+                )}
+                {isPending && <span style={{fontSize:"0.7rem",color:"var(--ap-text-light)",fontWeight:500}}>pending</span>}
+                {isGenerating && <span style={{fontSize:"0.7rem",color:"var(--ap-blue)",fontWeight:600}}>live</span>}
+              </div>
+              {!isPending && (
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  {isDone && (
+                    <button onClick={e => { e.stopPropagation(); copy("## Phase " + phase.id + ": " + phase.label + "\n\n" + state.content); }}
+                      style={{background:"none",border:"1px solid var(--ap-border)",borderRadius:"4px",color:"var(--ap-text-mid)",fontSize:"0.68rem",fontWeight:600,padding:"2px 8px",cursor:"pointer"}}>
+                      Copy
+                    </button>
+                  )}
+                  <span style={{color:"var(--ap-text-light)",fontSize:"0.75rem"}}>{isExpanded?"▲":"▼"}</span>
+                </div>
+              )}
+            </div>
+            {isExpanded && state && state.content && (
+              <div style={{padding:"0.875rem 1rem",fontSize:"0.85rem",lineHeight:"1.65",color:"var(--ap-text)",background:"var(--ap-white)",maxWidth:"100%",overflow:"hidden"}}>
+                <MD>{state.content}</MD>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {allDone && (
+        <button className="btn" onClick={copyFull} style={{background:"var(--ap-navy)",color:"var(--ap-blue)",border:"none"}}>
+          &#128203; Copy Full IR Playbook
+        </button>
+      )}
     </div>
   );
 }
 
-const EMAIL_TEMPLATES = {
-  standard: {
-    label: "Standard Informational",
-    prompt: (details) => `Draft a Standard Informational Email. Detail the specific behavior and activity observed from the alert and inquire if the activity is expected. Template: 'Hello, ${CONFIG.orgName} has alerted us regarding [insert alert name]. [insert behavior details] | We wanted to verify whether this activity was expected. Please feel free to reach out to us if you have any further questions or concerns. We are more than happy to help. Regards, ${CONFIG.analystName} - ${CONFIG.analystTitle}'\n\nIncident details to incorporate: ${details}`,
-  },
-  edr: {
-    label: "EDR Alert",
-    prompt: (details) => `Draft an EDR Solution Email. Detail specific activity and behavior observed via the alert. Template: 'Hello, we have been alerted by ${CONFIG.orgName} about a Malware Detection by Anti-Malware on device: [insert device name] | File: [file name] | File Path: [file path] | Status: [file status] | The file was automatically quarantined by your EDR solution and will be removed in 30 days. We just wanted to bring this activity to your attention in case this file was expected on the device. Please let us know if you have any questions or concerns we are happy to assist. Regards, ${CONFIG.analystName} - ${CONFIG.analystTitle}'\n\nIncident details to incorporate: ${details}`,
-  },
-  pup: {
-    label: "Potentially Unwanted Program",
-    prompt: (details) => `Draft a PUP Removal Email. Detail the process observed, the specific activity, and threat intelligence status (Malicious/Suspicious). Template: 'Hello, ${CONFIG.orgName} has identified a Potentially Unwanted Program (PUP) on [system]. Process: [process]. Path: [path] Activity: [activity]. [explain and describe the process and identify the known PUP software associated]. We recommend performing a full disk scan and quarantining any components of this software that are found. [Recommend a manual removal process for potentially unwanted programs]. If you have any further questions or concerns regarding this activity, please feel free to reach out to us. We are happy to help. Regards, ${CONFIG.analystName} - ${CONFIG.analystTitle}'\n\nIncident details to incorporate: ${details}`,
-  },
-};
-
-
-// ── Smart Email Component ─────────────────────────────────────────────────────
-
-// ── Smart Email Component ─────────────────────────────────────────────────────
-
-// ── Smart Email Component ─────────────────────────────────────────────────────
 function SmartEmail({ copy, rawLog }) {
   const [log, setLog] = useState(rawLog || "");
   const [result, setResult] = useState(null);
@@ -1561,15 +2638,15 @@ function SmartEmail({ copy, rawLog }) {
     setEditedSubject(subject);
     const { meta } = result;
     const alertLine = meta.reason
-      ? "${CONFIG.orgName} has observed the following security alert: " + meta.reason + "."
-      : "${CONFIG.orgName} has observed the following security alert.";
+      ? "${getSettings().orgName} has observed the following security alert: " + meta.reason + "."
+      : "${getSettings().orgName} has observed the following security alert.";
     const actionLine  = meta.action   ? "\nAction: " + meta.action   : "";
     const sourceLine  = meta.provider ? "\nSource: " + meta.provider : "";
     const timeLine    = meta.time     ? "\nTime: "   + formatTimestamp(meta.time) : "";
     const body = "Hello,\n\n" + alertLine + actionLine + sourceLine + timeLine
       + "\n\nWe wanted to bring this activity to your attention and confirm whether it was expected. "
       + "If you have any questions or concerns, please let us know. We are more than happy to assist."
-      + "\n\nRegards,\n${CONFIG.analystName} - ${CONFIG.analystTitle}";
+      + "\n\nRegards,\n" + getSettings().analystName + " - " + getSettings().analystTitle + "";
     setEditedBody(body);
   };
 
@@ -1600,7 +2677,7 @@ function SmartEmail({ copy, rawLog }) {
       <textarea className="textarea" placeholder="Paste your O365, Windows, Fortigate, Defender, Okta, or Duo log here..." value={log} onChange={e => setLog(e.target.value)} style={{minHeight:"120px"}}/>
       <div className="btn-row">
         <button className="btn" onClick={generate} disabled={!log.trim()}>Generate Email</button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setLog(""); setResult(null); setAiReview(""); setEditedBody(""); setEditedSubject(""); setSuggestedSubjects([]); setChosenSubject(""); setIsEditing(false); }} disabled={!log && !result}>Clear</button>
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setLog(""); setResult(null); setAiReview(""); setEditedBody(""); setEditedSubject(""); setSuggestedSubjects([]); setChosenSubject(""); setIsEditing(false); }} disabled={!log && !result}>Clear</button>
       </div>
 
       {result && result.error && (
@@ -1683,7 +2760,7 @@ function SmartEmail({ copy, rawLog }) {
           </div>
 
           <div style={{display:"flex",gap:"0.5rem"}}>
-            <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)"}} onClick={runAIReview} disabled={loadingAI}>
+            <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)"}} onClick={runAIReview} disabled={loadingAI}>
               {loadingAI ? <><Spinner /> AI Review...</> : "\uD83E\uDD16 AI Review"}
             </button>
             <button className="btn" onClick={() => copy(editedSubject + "\n\n" + finalEmail)}>
@@ -1692,7 +2769,7 @@ function SmartEmail({ copy, rawLog }) {
           </div>
 
           {aiReview && (
-            <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.875rem 1rem",fontSize:"0.85rem",lineHeight:"1.65"}}>
+            <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.875rem 1rem",fontSize:"0.85rem",lineHeight:"1.65"}}>
               <div style={{fontWeight:600,color:"var(--ap-navy)",marginBottom:"0.4rem",fontSize:"0.78rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>&#128737; AI Review (redacted log used)</div>
               <MD>{aiReview}</MD>
             </div>
@@ -1707,7 +2784,7 @@ function SmartEmail({ copy, rawLog }) {
 function TokenMapBanner({ tokenMap, showMap, setShowMap }) {
   if (!tokenMap || Object.keys(tokenMap).length === 0) return null;
   return (
-    <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
+    <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.75rem 1rem",fontSize:"0.8rem"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showMap?"0.5rem":0}}>
         <span style={{fontWeight:600,color:"var(--ap-navy)"}}>&#128737; PII Redacted — {Object.keys(tokenMap).length} value{Object.keys(tokenMap).length!==1?"s":""} masked before submission</span>
         <button onClick={()=>setShowMap(v=>!v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.75rem",cursor:"pointer"}}>
@@ -1726,7 +2803,7 @@ function TokenMapBanner({ tokenMap, showMap, setShowMap }) {
             {Object.entries(tokenMap).map(([token,val])=>(
               <tr key={token}>
                 <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
-                <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace"}}>{val}</td>
+                <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace",wordBreak:"break-word",maxWidth:"260px"}}>{truncateTokenValue(val)}</td>
               </tr>
             ))}
           </tbody>
@@ -1747,10 +2824,12 @@ function ThreatHuntQuery({ copy }) {
   const [tokenMap, setTokenMap] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showTokenMap, setShowTokenMap] = useState(false);
+  const [customRules, setCustomRules] = useState([]);
 
   const clear = () => {
     setFinding(""); setResult(""); setSanitized(null);
     setTokenMap(null); setShowPreview(false); setShowTokenMap(false);
+    setCustomRules([]);
   };
 
   const LANGUAGE_LABELS = {
@@ -1759,45 +2838,31 @@ function ThreatHuntQuery({ copy }) {
     sigma: "Sigma (Generic)",
   };
 
-  const LANGUAGE_PROMPTS = {
-    kql:   "Generate a Kibana Query Language (KQL) threat hunting query for Elastic SIEM.",
-    spl:   "Generate a Splunk Processing Language (SPL) threat hunting query for Splunk SIEM.",
-    sigma: "Generate a Sigma rule (YAML format) that can be compiled to multiple SIEM targets.",
-  };
-
-  // Run sanitization when input changes to show preview
   const handleInput = (val) => {
     setFinding(val);
     setResult(""); setSanitized(null); setTokenMap(null);
     if (!val.trim()) return;
-    const { sanitized: s, tokenMap: tMap, wasJSON, totalFields } = sanitizeForHunt(val);
-    setSanitized({ content: s, wasJSON, totalFields });
+    const { sanitized: s, tokenMap: tMap, wasJSON } = sanitizeForHunt(val);
+    setSanitized({ content: s, wasJSON });
     setTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
   };
 
   const generate = async () => {
     if (!finding.trim()) return;
     setLoading(true); setResult("");
-    const { sanitized: s, tokenMap: tMap } = sanitizeForHunt(finding);
-    const basePrompt = LANGUAGE_PROMPTS[language] + "\n\n" +
-      "Based on the following log data, suggest threat hunting queries. " +
-      "The log has been sanitized — sensitive field values have been removed or redacted. " +
-      "Focus on the field structure, event types, behavioral patterns, and any preserved analytical values to generate hunt queries.\n\n" +
-      "Include:\n" +
-      "1. The query itself, clearly formatted and ready to paste into the SIEM\n" +
-      "2. A brief explanation of what the query hunts for (1-2 sentences)\n" +
-      "3. Expected false positives to watch for\n" +
-      "4. 1-2 recommended follow-up pivot queries or fields to investigate\n\n" +
-      "Log data:\n" + s;
-    const prompt = buildRedactedPrompt(s, LANGUAGE_PROMPTS[language] + "\n\n" +
-      "Based on the following sanitized log data, suggest threat hunting queries. " +
+    const { sanitized: rawS, tokenMap: tMap } = sanitizeForHunt(finding);
+    const s = applyCustomRedactions(rawS, customRules);
+    const instruction = LANGUAGE_LABELS[language] + " Threat Hunt Query Generator.\n\n" +
+      "Based on the following sanitized log data, generate comprehensive threat hunting queries. " +
       "Sensitive field values have been removed or redacted — focus on field structure, " +
       "event types, behavioral patterns, and preserved analytical values.\n\n" +
-      "Include:\n" +
-      "1. The query itself, clearly formatted and ready to paste into the SIEM\n" +
-      "2. A brief explanation of what the query hunts for\n" +
-      "3. Expected false positives\n" +
-      "4. 1-2 recommended follow-up pivot queries", tMap);
+      "Provide:\n" +
+      "1. Primary hunt query — clearly formatted and ready to paste into the SIEM\n" +
+      "2. What the query hunts for (2-3 sentences)\n" +
+      "3. Expected false positives to watch for\n" +
+      "4. 2-3 recommended follow-up pivot queries with brief explanations\n" +
+      "5. Relevant MITRE ATT&CK techniques if applicable";
+    const prompt = buildRedactedPrompt(s, instruction, tMap);
     try {
       await callClaude([{ role: "user", content: prompt }], setResult);
     } catch (e) { setResult("Error: " + e.message); }
@@ -1832,49 +2897,49 @@ function ThreatHuntQuery({ copy }) {
         style={{minHeight:"120px"}} />
 
       {sanitized && (
-        <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-          <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.8rem"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontWeight:600,color:"var(--ap-navy)"}}>
-                {sanitized.wasJSON
-                  ? "\uD83D\uDEE1\uFE0F Log sanitized — values stripped, field structure preserved"
-                  : "\uD83D\uDEE1\uFE0F Plain text — pattern sweep applied"}
-              </span>
-              <div style={{display:"flex",gap:"0.5rem"}}>
-                {tokenMap && (
-                  <button onClick={() => setShowTokenMap(v => !v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.72rem",cursor:"pointer"}}>
-                    {showTokenMap ? "Hide tokens ▲" : "Show tokens ▼"}
-                  </button>
-                )}
-                <button onClick={() => setShowPreview(v => !v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.72rem",cursor:"pointer"}}>
-                  {showPreview ? "Hide preview ▲" : "Preview sanitized ▼"}
+        <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.8rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,color:"var(--ap-navy)"}}>
+              &#128737;&#65039; {sanitized.wasJSON ? "Log sanitized — values stripped, field structure preserved" : "Plain text — pattern sweep applied"}
+            </span>
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              {tokenMap && (
+                <button onClick={() => setShowTokenMap(v => !v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.72rem",cursor:"pointer"}}>
+                  {showTokenMap ? "Hide tokens ▲" : "Show tokens ▼"}
                 </button>
-              </div>
+              )}
+              <button onClick={() => setShowPreview(v => !v)} style={{background:"none",border:"none",color:"var(--ap-blue-dark)",fontWeight:600,fontSize:"0.72rem",cursor:"pointer"}}>
+                {showPreview ? "Hide preview ▲" : "Preview sanitized ▼"}
+              </button>
             </div>
-            {showTokenMap && tokenMap && (
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem",marginTop:"0.5rem"}}>
-                <thead>
-                  <tr>
-                    <th style={{textAlign:"left",padding:"2px 6px",color:"var(--ap-text-mid)",borderBottom:"1px solid var(--ap-border)"}}>Token</th>
-                    <th style={{textAlign:"left",padding:"2px 6px",color:"var(--ap-text-mid)",borderBottom:"1px solid var(--ap-border)"}}>Original value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(tokenMap).map(([token, val]) => (
-                    <tr key={token}>
-                      <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
-                      <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace"}}>{val}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            {showPreview && (
-              <pre style={{marginTop:"0.5rem",background:"var(--ap-white)",border:"1px solid var(--ap-border)",borderRadius:"4px",padding:"0.6rem",fontSize:"0.72rem",overflowX:"auto",maxHeight:"180px",overflowY:"auto",color:"var(--ap-text)"}}>
-                {sanitized.content}
-              </pre>
-            )}
           </div>
+          {showTokenMap && tokenMap && (
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.75rem",marginTop:"0.5rem"}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",padding:"2px 6px",color:"var(--ap-text-mid)",borderBottom:"1px solid var(--ap-border)"}}>Token</th>
+                  <th style={{textAlign:"left",padding:"2px 6px",color:"var(--ap-text-mid)",borderBottom:"1px solid var(--ap-border)"}}>Original value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(tokenMap).map(([token, val]) => (
+                  <tr key={token}>
+                    <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
+                    <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace",wordBreak:"break-word",maxWidth:"260px"}}>{truncateTokenValue(val)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {showPreview && (
+            <pre style={{marginTop:"0.5rem",background:"var(--ap-white)",border:"1px solid var(--ap-border)",borderRadius:"4px",padding:"0.6rem",fontSize:"0.72rem",overflowX:"auto",maxHeight:"180px",overflowY:"auto",color:"var(--ap-text)"}}>
+              {applyCustomRedactions(sanitized.content, customRules)}
+            </pre>
+          )}
+          <CustomRedactionPanel
+            text={sanitized ? applyCustomRedactions(sanitized.content, customRules) : ""}
+            onRedact={setCustomRules}
+          />
         </div>
       )}
 
@@ -1882,23 +2947,75 @@ function ThreatHuntQuery({ copy }) {
         <button className="btn" onClick={generate} disabled={loading || !finding.trim()}>
           {loading ? <><Spinner /> Generating...</> : "Generate Hunt Query"}
         </button>
-        <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!finding && !result}>Clear</button>
+        <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={clear} disabled={!finding && !result}>Clear</button>
       </div>
 
       {result && (
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
           <div style={{background:"var(--ap-navy)",borderRadius:"6px 6px 0 0",padding:"0.5rem 1rem",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{color:"var(--ap-blue)",fontWeight:600,fontSize:"0.78rem",letterSpacing:"0.04em",fontFamily:"'Montserrat',sans-serif"}}>{LANGUAGE_LABELS[language]} Query</span>
-            <button onClick={() => copy(result)} style={{background:"none",border:"1px solid rgba(124,111,232,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Copy</button>
+            <button onClick={() => copy(result)} style={{background:"none",border:"1px solid rgba(63,186,234,0.4)",borderRadius:"4px",color:"var(--ap-blue)",fontSize:"0.7rem",fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>Copy</button>
           </div>
-          <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderTop:"none",borderLeft:"3px solid var(--ap-blue)",borderRadius:"0 0 6px 6px",padding:"0.875rem 1rem",fontSize:"0.85rem",lineHeight:"1.65",color:"var(--ap-text)"}}>
-            <MD>{result}</MD>
+          <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderTop:"none",borderLeft:"3px solid var(--ap-blue)",borderRadius:"0 0 6px 6px",padding:"0.875rem 1rem",fontSize:"0.85rem",lineHeight:"1.65",color:"var(--ap-text)",minHeight:"120px",overflow:"hidden",maxWidth:"100%"}}>
+            <div style={{overflowX:"auto",maxWidth:"100%"}}>
+              <MD>{result}</MD>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
+
+
+
+// Global settings getter for use in non-component contexts
+function getSettings() {
+  try {
+    const stored = localStorage.getItem("cybercat_settings");
+    return stored ? { ...SETTINGS_DEFAULTS, ...JSON.parse(stored) } : { ...SETTINGS_DEFAULTS };
+  } catch { return { ...SETTINGS_DEFAULTS }; }
+}
+
+// ── Email Templates ───────────────────────────────────────────────────────────
+function getEmailTemplates() {
+  const s = getSettings();
+  return {
+    standard: {
+      label: "Standard Informational",
+      prompt: function(d) {
+        return "Draft a Standard Informational Email. Detail the specific behavior and activity observed from the alert and inquire if the activity is expected. " +
+          "Template: Hello, " + s.orgName + " has alerted us regarding [insert alert name]. [insert behavior details]. " +
+          "We wanted to verify whether this activity was expected. Please feel free to reach out to us if you have any further questions or concerns. " +
+          "We are more than happy to help. Regards, " + s.analystName + " - " + s.analystTitle + ".\n\nIncident details: " + d;
+      }
+    },
+    edr: {
+      label: "Cybereason EDR Alert",
+      prompt: function(d) {
+        return "Draft an EDR Solution Email. Detail specific activity and behavior observed via the alert. " +
+          "Template: Hello, we have been alerted by " + s.orgName + " about a Malware Detection by Anti-Malware on device: [insert device name]. " +
+          "File: [file name]. File Path: [file path]. Status: [file status]. The file was automatically quarantined by Cybereason and will be removed in 30 days. " +
+          "We just wanted to bring this activity to your attention in case this file was expected on the device. " +
+          "Please let us know if you have any questions or concerns we are happy to assist. " +
+          "Regards, " + s.analystName + " - " + s.analystTitle + ".\n\nIncident details: " + d;
+      }
+    },
+    pup: {
+      label: "Potentially Unwanted Program",
+      prompt: function(d) {
+        return "Draft a PUP Removal Email. Detail the process observed, the specific activity, and threat intelligence status (Malicious or Suspicious). " +
+          "Template: Hello, " + s.orgName + " has identified a Potentially Unwanted Program (PUP) on [system]. " +
+          "Process: [process]. Path: [path]. Activity: [activity]. [explain and describe the process and identify the known PUP software associated]. " +
+          "We recommend performing a full disk scan and quarantining any components of this software that are found. " +
+          "Recommend a manual removal process for potentially unwanted programs. " +
+          "If you have any further questions or concerns regarding this activity please feel free to reach out to us. " +
+          "We are happy to help. Regards, " + s.analystName + " - " + s.analystTitle + ".\n\nIncident details: " + d;
+      }
+    },
+  };
+}
+const EMAIL_TEMPLATES = getEmailTemplates();
 
 function Communications({ copy }) {
   const [template, setTemplate] = useState("standard");
@@ -1911,6 +3028,7 @@ function Communications({ copy }) {
   const [showEmailMap, setShowEmailMap] = useState(false);
   const [emailPreview, setEmailPreview] = useState(null);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [emailCustomRules, setEmailCustomRules] = useState([]);
 
   // Incident state
   const [incidentCtx, setIncidentCtx] = useState("");
@@ -1922,6 +3040,7 @@ function Communications({ copy }) {
   const [showIncidentMap, setShowIncidentMap] = useState(false);
   const [incidentPreview, setIncidentPreview] = useState(null);
   const [showIncidentPreview, setShowIncidentPreview] = useState(false);
+  const [incidentCustomRules, setIncidentCustomRules] = useState([]);
 
   // Close-out state
   const [closeoutCtx, setCloseoutCtx] = useState("");
@@ -1931,6 +3050,7 @@ function Communications({ copy }) {
   const [showCloseoutMap, setShowCloseoutMap] = useState(false);
   const [closeoutPreview, setCloseoutPreview] = useState(null);
   const [showCloseoutPreview, setShowCloseoutPreview] = useState(false);
+  const [closeoutCustomRules, setCloseoutCustomRules] = useState([]);
 
   // Live redaction handlers — run on every keystroke
   const handleEmailInput = (val) => {
@@ -1962,9 +3082,11 @@ function Communications({ copy }) {
     if (!details.trim()) return;
     setLoadingEmail(true); setEmailResult("");
     try {
-      const { redacted, tokenMap: tMap } = redactLog(details);
+      const { redacted: baseR1, tokenMap: tMap } = redactLog(details);
+      const redacted = applyCustomRedactions(baseR1, emailCustomRules);
       setEmailTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
-      await callClaude([{ role: "user", content: EMAIL_TEMPLATES[template].prompt(redacted) }], setEmailResult);
+      const templates = getEmailTemplates(); // refresh with current settings
+      await callClaude([{ role: "user", content: templates[template].prompt(redacted) }], setEmailResult);
     } catch (e) { setEmailResult("Error: " + e.message); }
     finally { setLoadingEmail(false); }
   };
@@ -1973,7 +3095,8 @@ function Communications({ copy }) {
     if (!incidentCtx.trim()) return;
     setLoadingSummary(true); setSummary("");
     try {
-      const { redacted, tokenMap: tMap } = redactLog(incidentCtx);
+      const { redacted: baseR2, tokenMap: tMap } = redactLog(incidentCtx);
+      const redacted = applyCustomRedactions(baseR2, incidentCustomRules);
       setIncidentTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
       await callClaude([{ role: "user", content: buildRedactedPrompt(redacted, "Write a concise incident summary. Bold the type, impact, and status. Use bullets for timeline.", tMap) }], setSummary);
     } catch (e) { setSummary("Error: " + e.message); }
@@ -1984,7 +3107,8 @@ function Communications({ copy }) {
     if (!incidentCtx.trim()) return;
     setLoadingEscalation(true); setEscalation("");
     try {
-      const { redacted, tokenMap: tMap } = redactLog(incidentCtx);
+      const { redacted: baseR3, tokenMap: tMap } = redactLog(incidentCtx);
+      const redacted = applyCustomRedactions(baseR3, incidentCustomRules);
       setIncidentTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
       await callClaude([{ role: "user", content: buildRedactedPrompt(redacted, "Draft an escalation email for this incident. Include usernames, filenames, systems, hashes where available. Bold critical info.", tMap) }], setEscalation);
     } catch (e) { setEscalation("Error: " + e.message); }
@@ -1995,7 +3119,8 @@ function Communications({ copy }) {
     if (!closeoutCtx.trim()) return;
     setLoadingCloseout(true); setCloseout("");
     try {
-      const { redacted, tokenMap: tMap } = redactLog(closeoutCtx);
+      const { redacted: baseR4, tokenMap: tMap } = redactLog(closeoutCtx);
+      const redacted = applyCustomRedactions(baseR4, closeoutCustomRules);
       setCloseoutTokenMap(Object.keys(tMap).length > 0 ? tMap : null);
       await callClaude([{ role: "user", content: buildRedactedPrompt(redacted, "Write brief close-out notes for this alert. Omit PII. Classify the activity (benign/suspicious/malicious), state what was found, and confirm no further action needed or list follow-up items.", tMap) }], setCloseout);
     } catch (e) { setCloseout("Error: " + e.message); }
@@ -2006,7 +3131,7 @@ function Communications({ copy }) {
   const PreviewBanner = ({ preview, tokenMap, showMap, setShowMap, showPreview, setShowPreview }) => {
     if (!preview) return null;
     return (
-      <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(124,111,232,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.8rem"}}>
+      <div style={{background:"var(--ap-blue-pale)",border:"1px solid rgba(63,186,234,0.3)",borderLeft:"3px solid var(--ap-blue)",borderRadius:"6px",padding:"0.65rem 1rem",fontSize:"0.8rem"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontWeight:600,color:"var(--ap-navy)"}}>
             &#128737;&#65039; {tokenMap ? Object.keys(tokenMap).length + " value" + (Object.keys(tokenMap).length !== 1 ? "s" : "") + " redacted" : "Pattern sweep applied"} &mdash; {preview.wasJSON ? "JSON" : "plain text"}
@@ -2034,7 +3159,7 @@ function Communications({ copy }) {
               {Object.entries(tokenMap).map(([token, val]) => (
                 <tr key={token}>
                   <td style={{padding:"2px 6px",fontFamily:"monospace",color:"var(--ap-blue-dark)",fontWeight:600}}>{token}</td>
-                  <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace"}}>{val}</td>
+                  <td style={{padding:"2px 6px",color:"var(--ap-text)",fontFamily:"monospace",wordBreak:"break-word",maxWidth:"260px"}}>{truncateTokenValue(val)}</td>
                 </tr>
               ))}
             </tbody>
@@ -2057,16 +3182,17 @@ function Communications({ copy }) {
         <h3 className="subsection-title">Informational Email</h3>
         <label className="field-label">Template</label>
         <select className="select" value={template} onChange={e => setTemplate(e.target.value)}>
-          {Object.entries(EMAIL_TEMPLATES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          {Object.entries(getEmailTemplates()).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <label className="field-label">Incident details</label>
         <textarea className="textarea" placeholder="Alert type, system affected, detected behavior..." value={details} onChange={e => handleEmailInput(e.target.value)} />
         <PreviewBanner preview={emailPreview} tokenMap={emailTokenMap} showMap={showEmailMap} setShowMap={setShowEmailMap} showPreview={showEmailPreview} setShowPreview={setShowEmailPreview} />
+        {emailPreview && <CustomRedactionPanel text={emailPreview.content} onRedact={setEmailCustomRules} />}
         <div className="btn-row">
           <button className="btn" onClick={genEmail} disabled={loadingEmail || !details.trim()}>
             {loadingEmail ? <><Spinner /> Generating...</> : "Generate " + EMAIL_TEMPLATES[template].label}
           </button>
-          <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setDetails(""); setEmailResult(""); setEmailTokenMap(null); setEmailPreview(null); setShowEmailMap(false); setShowEmailPreview(false); }} disabled={!details && !emailResult}>Clear</button>
+          <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setDetails(""); setEmailResult(""); setEmailTokenMap(null); setEmailPreview(null); setShowEmailMap(false); setShowEmailPreview(false); }} disabled={!details && !emailResult}>Clear</button>
         </div>
         <ResultBox content={emailResult} onCopy={copy} label="Copy Email" />
       </div>
@@ -2075,6 +3201,7 @@ function Communications({ copy }) {
         <h3 className="subsection-title">Incident Summary & Escalation</h3>
         <textarea className="textarea" placeholder="General incident context..." value={incidentCtx} onChange={e => handleIncidentInput(e.target.value)} />
         <PreviewBanner preview={incidentPreview} tokenMap={incidentTokenMap} showMap={showIncidentMap} setShowMap={setShowIncidentMap} showPreview={showIncidentPreview} setShowPreview={setShowIncidentPreview} />
+        {incidentPreview && <CustomRedactionPanel text={incidentPreview.content} onRedact={setIncidentCustomRules} />}
         <div className="btn-row">
           <button className="btn btn-half" onClick={genSummary} disabled={loadingSummary || !incidentCtx.trim()}>
             {loadingSummary ? <><Spinner /> ...</> : "Summary"}
@@ -2082,7 +3209,7 @@ function Communications({ copy }) {
           <button className="btn btn-half" onClick={genEscalation} disabled={loadingEscalation || !incidentCtx.trim()}>
             {loadingEscalation ? <><Spinner /> ...</> : "Escalation Email"}
           </button>
-          <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",gridColumn:"1/-1"}} onClick={() => { setIncidentCtx(""); setSummary(""); setEscalation(""); setIncidentTokenMap(null); setIncidentPreview(null); setShowIncidentMap(false); setShowIncidentPreview(false); }} disabled={!incidentCtx && !summary && !escalation}>Clear</button>
+          <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",gridColumn:"1/-1"}} onClick={() => { setIncidentCtx(""); setSummary(""); setEscalation(""); setIncidentTokenMap(null); setIncidentPreview(null); setShowIncidentMap(false); setShowIncidentPreview(false); }} disabled={!incidentCtx && !summary && !escalation}>Clear</button>
         </div>
         <ResultBox content={summary} onCopy={copy} label="Copy Summary" />
         <ResultBox content={escalation} onCopy={copy} label="Copy Escalation" />
@@ -2092,11 +3219,12 @@ function Communications({ copy }) {
         <h3 className="subsection-title">Close-Out Notes</h3>
         <textarea className="textarea" placeholder="Details for close-out..." value={closeoutCtx} onChange={e => handleCloseoutInput(e.target.value)} />
         <PreviewBanner preview={closeoutPreview} tokenMap={closeoutTokenMap} showMap={showCloseoutMap} setShowMap={setShowCloseoutMap} showPreview={showCloseoutPreview} setShowPreview={setShowCloseoutPreview} />
+        {closeoutPreview && <CustomRedactionPanel text={closeoutPreview.content} onRedact={setCloseoutCustomRules} />}
         <div className="btn-row">
           <button className="btn" onClick={genCloseout} disabled={loadingCloseout || !closeoutCtx.trim()}>
             {loadingCloseout ? <><Spinner /> Generating...</> : "Generate Close-Out Notes"}
           </button>
-          <button className="btn" style={{background:"rgba(18,16,42,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setCloseoutCtx(""); setCloseout(""); setCloseoutTokenMap(null); setCloseoutPreview(null); setShowCloseoutMap(false); setShowCloseoutPreview(false); }} disabled={!closeoutCtx && !closeout}>Clear</button>
+          <button className="btn" style={{background:"rgba(26,43,60,0.08)",color:"var(--ap-navy)",border:"1px solid var(--ap-border)",width:"auto",padding:"0.55rem 1rem"}} onClick={() => { setCloseoutCtx(""); setCloseout(""); setCloseoutTokenMap(null); setCloseoutPreview(null); setShowCloseoutMap(false); setShowCloseoutPreview(false); }} disabled={!closeoutCtx && !closeout}>Clear</button>
         </div>
         <ResultBox content={closeout} onCopy={copy} label="Copy Notes" />
       </div>
@@ -2180,10 +3308,14 @@ function Chat() {
 export default function App() {
   const [copyMsg, copy] = useCopy();
   const [resetKey, setResetKey] = useState(0);
+  const [playbookInput, setPlaybookInput] = useState("");
+  const [settings, updateSettings, resetSettings] = useSettings();
+  const [showSettings, setShowSettings] = useState(false);
 
   const newCase = () => {
     if (window.confirm("Start a new case? This will clear all fields and results.")) {
       setResetKey(k => k + 1);
+      setPlaybookInput("");
     }
   };
 
@@ -2195,18 +3327,18 @@ export default function App() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-          --ap-navy: #12102A;
-          --ap-navy-mid: #1C1840;
-          --ap-navy-light: #2D2660;
-          --ap-blue: #7C6FE8;
-          --ap-blue-dark: #5A4FBF;
-          --ap-blue-pale: #EEEDFE;
+          --ap-navy: #1a2b3c;
+          --ap-navy-mid: #243c4f;
+          --ap-navy-light: #2e4d63;
+          --ap-blue: #3fbaea;
+          --ap-blue-dark: #2d9fd0;
+          --ap-blue-pale: #e8f6fd;
           --ap-white: #ffffff;
-          --ap-offwhite: #F7F6FF;
-          --ap-border: #CECBF6;
-          --ap-text: #12102A;
-          --ap-text-mid: #4A4580;
-          --ap-text-light: #7B75B8;
+          --ap-offwhite: #f4f7fa;
+          --ap-border: #d0dde8;
+          --ap-text: #1a2b3c;
+          --ap-text-mid: #4a6278;
+          --ap-text-light: #7a96aa;
           --ap-success: #27ae60;
           --ap-warn: #e67e22;
           --ap-danger: #e74c3c;
@@ -2277,7 +3409,9 @@ export default function App() {
           border: 1px solid var(--ap-border);
           border-radius: 12px;
           padding: 1.75rem;
-          box-shadow: 0 2px 12px rgba(18,16,42,0.07);
+          box-shadow: 0 2px 12px rgba(26,43,60,0.07);
+          min-width: 0;
+          overflow: hidden;
         }
 
         .section { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -2330,7 +3464,7 @@ export default function App() {
         .textarea { min-height: 110px; }
         .textarea:focus, .input:focus, .select:focus {
           border-color: var(--ap-blue);
-          box-shadow: 0 0 0 3px rgba(124,111,232,0.15);
+          box-shadow: 0 0 0 3px rgba(63,186,234,0.15);
           background: var(--ap-white);
         }
         .select { appearance: none; cursor: pointer; }
@@ -2377,7 +3511,7 @@ export default function App() {
 
         .result-box {
           background: var(--ap-blue-pale);
-          border: 1px solid rgba(124,111,232,0.3);
+          border: 1px solid rgba(63,186,234,0.3);
           border-left: 3px solid var(--ap-blue);
           border-radius: 6px;
           padding: 0.875rem 1rem;
@@ -2403,8 +3537,12 @@ export default function App() {
         .copy-btn:hover { opacity: 1; text-decoration: underline; }
 
         .md h1, .md h2, .md h3 { color: var(--ap-navy); font-size: 0.9rem; margin: 0.5rem 0 0.25rem; font-weight: 700; }
+        .md pre { background: rgba(26,43,60,0.06); border: 1px solid var(--ap-border); border-radius: 4px; padding: 0.6rem 0.75rem; margin: 0.4rem 0; overflow-x: auto; max-width: 100%; box-sizing: border-box; }
+        .md pre code { background: none; padding: 0; font-size: 0.78rem; color: var(--ap-navy); white-space: pre; word-break: normal; display: block; }
+        .md ol { padding-left: 1.25rem; }
+        .md ol li { margin: 0.2rem 0; }
         .md strong { color: var(--ap-navy); font-weight: 700; }
-        .md code { background: rgba(124,111,232,0.15); padding: 0.1em 0.4em; border-radius: 3px; font-family: 'Source Code Pro', monospace; font-size: 0.82em; color: var(--ap-navy-mid); }
+        .md code { background: rgba(63,186,234,0.15); padding: 0.1em 0.4em; border-radius: 3px; font-family: 'Source Code Pro', monospace; font-size: 0.82em; color: var(--ap-navy-mid); }
         .md ul { padding-left: 1.25rem; }
         .md li { margin: 0.2rem 0; }
         .md p { margin: 0.35rem 0; }
@@ -2471,7 +3609,7 @@ export default function App() {
           outline: none;
           transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .chat-input:focus { border-color: var(--ap-blue); box-shadow: 0 0 0 3px rgba(124,111,232,0.15); }
+        .chat-input:focus { border-color: var(--ap-blue); box-shadow: 0 0 0 3px rgba(63,186,234,0.15); }
         .chat-send {
           background: var(--ap-navy);
           border: none;
@@ -2497,7 +3635,7 @@ export default function App() {
         .spinner {
           display: inline-block;
           width: 13px; height: 13px;
-          border: 2px solid rgba(124,111,232,0.3);
+          border: 2px solid rgba(63,186,234,0.3);
           border-top-color: var(--ap-blue);
           border-radius: 50%;
           animation: spin 0.7s linear infinite;
@@ -2515,7 +3653,7 @@ export default function App() {
           font-size: 0.8rem;
           font-weight: 600;
           padding: 0.65rem 1.2rem;
-          box-shadow: 0 4px 16px rgba(18,16,42,0.2);
+          box-shadow: 0 4px 16px rgba(26,43,60,0.2);
           z-index: 999;
           animation: fadeIn 0.2s ease;
         }
@@ -2533,14 +3671,27 @@ export default function App() {
             <div className="logo">Cyber<span>Cat</span></div>
             <div className="logo-sub">AI-powered triage & incident response</div>
           </div>
-          <button onClick={newCase} style={{background:"rgba(124,111,232,0.12)",border:"1px solid rgba(124,111,232,0.35)",borderRadius:"6px",color:"var(--ap-blue)",fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:"0.78rem",padding:"0.55rem 1.1rem",cursor:"pointer",letterSpacing:"0.04em",transition:"background 0.2s",marginLeft:"auto"}}>
-            &#8635; New Case
-          </button>
+          <div style={{display:"flex",gap:"0.5rem",marginLeft:"auto"}}>
+            <button onClick={() => setShowSettings(true)} style={{background:"rgba(63,186,234,0.12)",border:"1px solid rgba(63,186,234,0.35)",borderRadius:"6px",color:"var(--ap-blue)",fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:"0.78rem",padding:"0.55rem 1.1rem",cursor:"pointer",letterSpacing:"0.04em",transition:"background 0.2s"}}>
+              &#9881;&#65039; Settings
+            </button>
+            <button onClick={newCase} style={{background:"rgba(63,186,234,0.12)",border:"1px solid rgba(63,186,234,0.35)",borderRadius:"6px",color:"var(--ap-blue)",fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:"0.78rem",padding:"0.55rem 1.1rem",cursor:"pointer",letterSpacing:"0.04em",transition:"background 0.2s"}}>
+              &#8635; New Case
+            </button>
+          </div>
         </header>
+        {showSettings && (
+          <SettingsModal
+            settings={settings}
+            onUpdate={updateSettings}
+            onReset={resetSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
 
         <div className="columns">
           <div className="card" key={"left-" + resetKey}>
-            <LogAnalysis copy={copy} />
+            <LogAnalysis copy={copy} onSendToPlaybook={setPlaybookInput} />
             <CsvAnalysis copy={copy} />
             <IOCExtractor copy={copy} />
             <ThreatHuntQuery copy={copy} />
@@ -2548,7 +3699,7 @@ export default function App() {
           </div>
           <div className="card" key={"right-" + resetKey}>
             <ThreatIntel copy={copy} />
-            <Playbook copy={copy} />
+            <Playbook copy={copy} externalInput={playbookInput} onExternalInputUsed={() => setPlaybookInput("")} />
             <SmartEmail copy={copy} />
             <Communications copy={copy} />
           </div>
